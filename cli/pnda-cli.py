@@ -53,9 +53,12 @@ VALIDATION_RULES = None
 START = datetime.datetime.now()
 
 def banner():
-    print "🐼  🐼  🐼  🐼  🐼  🐼  🐼"
-    print "   P N D A - C L I"
-    print "🐼  🐼  🐼  🐼  🐼  🐼  🐼"
+    print r"    ____  _   ______  ___ "
+    print r"   / __ \/ | / / __ \/   |"
+    print r"  / /_/ /  |/ / / / / /| |"  
+    print r" / ____/ /|  / /_/ / ___ |"   
+    print r"/_/   /_/ |_/_____/_/  |_|"
+    print r""
 
 def run_cmd(cmd):
     print cmd
@@ -76,19 +79,19 @@ def generate_template_file(filepath, datanodes, opentsdbs, kafkas, zookeepers):
         instance_kafka = json.dumps(template_data['Resources'].pop('instanceKafka'))
         instance_zookeeper = json.dumps(template_data['Resources'].pop('instanceZookeeper'))
 
-        for datanode in range(1, datanodes + 1):
+        for datanode in range(0, datanodes):
             instance_cdh_dn_n = instance_cdh_dn.replace('$node_idx$', str(datanode))
             template_data['Resources']['instanceCdhDn%s' % datanode] = json.loads(instance_cdh_dn_n)
 
-        for opentsdb in range(1, opentsdbs + 1):
+        for opentsdb in range(0, opentsdbs):
             instance_open_tsdb_n = instance_open_tsdb.replace('$node_idx$', str(opentsdb))
             template_data['Resources']['instanceOpenTsdb%s' % opentsdb] = json.loads(instance_open_tsdb_n)
 
-        for kafka in range(1, kafkas + 1):
+        for kafka in range(0, kafkas):
             instance_kafka_n = instance_kafka.replace('$node_idx$', str(kafka))
             template_data['Resources']['instanceKafka%s' % kafka] = json.loads(instance_kafka_n)
 
-        for zookeeper in range(1, zookeepers + 1):
+        for zookeeper in range(0, zookeepers):
             instance_zookeeper_n = instance_zookeeper.replace('$node_idx$', str(zookeeper))
             template_data['Resources']['instanceZookeeper%s' % zookeeper] = json.loads(instance_zookeeper_n)
 
@@ -141,13 +144,13 @@ def ssh(cmds, host):
     if ret_val != 0:
         raise Exception("Error running ssh commands on host %s. See debug log (%s) for details." % (host, LOG_FILE_NAME))
 
-def bootstrap(instance, saltmaster, cluster, flavour):
+def bootstrap(instance, saltmaster, cluster, flavor):
     ret_val = None
     try:
         ip_address = instance['private_ip_address']
         CONSOLE.debug('bootstrapping %s', ip_address)
         node_type = instance['node_type']
-        type_script = 'bootstrap-scripts/%s/%s.sh' % (flavour, node_type)
+        type_script = 'bootstrap-scripts/%s/%s.sh' % (flavor, node_type)
         if not os.path.isfile(type_script):
             type_script = 'bootstrap-scripts/%s.sh' % (node_type)
         node_idx = instance['node_idx']
@@ -155,7 +158,7 @@ def bootstrap(instance, saltmaster, cluster, flavour):
         ssh(['source /tmp/pnda_env.sh',
              'export PNDA_SALTMASTER_IP=%s' % saltmaster,
              'export PNDA_CLUSTER=%s' % cluster,
-             'export PNDA_FLAVOR=%s' % flavour,
+             'export PNDA_FLAVOR=%s' % flavor,
              'sudo chmod a+x /tmp/base.sh',
              'sudo -E /tmp/base.sh',
              'sudo chmod a+x /tmp/%s.sh' % node_type,
@@ -255,7 +258,7 @@ def write_ssh_config(bastion_ip, os_user, keyfile):
         config_file.write('ssh-add %s\n' % keyfile)
         config_file.write('ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -A -D 9999 %s@%s\n' % (keyfile, os_user, bastion_ip))
 
-def create(template_data, cluster, flavour, keyname, no_config_check):
+def create(template_data, cluster, flavor, keyname, no_config_check):
     keyfile = '%s.pem' % keyname
     #load these from env variables from client_env.sh
 
@@ -309,7 +312,7 @@ def create(template_data, cluster, flavour, keyname, no_config_check):
          'source /tmp/pnda_env.sh',
          'export PNDA_SALTMASTER_IP=%s' % saltmaster,
          'export PNDA_CLUSTER=%s' % cluster,
-         'export PNDA_FLAVOR=%s' % flavour,
+         'export PNDA_FLAVOR=%s' % flavor,
          'sudo chmod a+x /tmp/saltmaster.sh',
          'sudo -E /tmp/saltmaster.sh'],
         instance_map[cluster+'-saltmaster']['private_ip_address'])
@@ -318,7 +321,7 @@ def create(template_data, cluster, flavour, keyname, no_config_check):
     bootstrap_threads = []
     for key, instance in instance_map.iteritems():
         if 'saltmaster' not in key:
-            thread = Thread(target=bootstrap, args=[instance, saltmaster, cluster, flavour])
+            thread = Thread(target=bootstrap, args=[instance, saltmaster, cluster, flavor])
             bootstrap_threads.append(thread)
 
     for thread in bootstrap_threads:
@@ -339,7 +342,7 @@ def create(template_data, cluster, flavour, keyname, no_config_check):
         instance_map[cluster+'-saltmaster']['private_ip_address'])
     return instance_map[cluster+'-cdh-edge']['private_ip_address']
 
-def expand(template_data, cluster, flavour, old_datanodes, old_kafka, keyname):
+def expand(template_data, cluster, flavor, old_datanodes, old_kafka, keyname):
     keyfile = '%s.pem' % keyname
     #load these from env variables from client_env.sh
     region = os.environ['AWS_REGION']
@@ -375,9 +378,9 @@ def expand(template_data, cluster, flavour, old_datanodes, old_kafka, keyname):
     CONSOLE.info('Bootstrapping new instances. Expect this to take a few minutes, check the debug log for progress. (%s)', LOG_FILE_NAME)
     bootstrap_threads = []
     for _, instance in instance_map.iteritems():
-        if ((instance['node_type'] == 'cdh-dn' and int(instance['node_idx']) > old_datanodes
-             or instance['node_type'] == 'kafka' and int(instance['node_idx']) > old_kafka)):
-            thread = Thread(target=bootstrap, args=[instance, saltmaster, cluster, flavour])
+        if ((instance['node_type'] == 'cdh-dn' and int(instance['node_idx']) >= old_datanodes
+             or instance['node_type'] == 'kafka' and int(instance['node_idx']) >= old_kafka)):
+            thread = Thread(target=bootstrap, args=[instance, saltmaster, cluster, flavor])
             bootstrap_threads.append(thread)
 
     for thread in bootstrap_threads:
@@ -486,7 +489,7 @@ def get_args():
     parser.add_argument('-o', '--opentsdb-nodes', type=int, help='How many Open TSDB nodes for the hadoop cluster')
     parser.add_argument('-k', '--kafka-nodes', type=int, help='How many kafka nodes for the databus cluster')
     parser.add_argument('-z', '--zk-nodes', type=int, help='How many zookeeper nodes for the databus cluster')
-    parser.add_argument('-f', '--flavour', help='PNDA flavour: "standard"', choices=['standard'])
+    parser.add_argument('-f', '--flavour', help='PNDA flavor: "standard"', choices=['standard'])
     parser.add_argument('-s', '--keyname', help='Keypair name')
     parser.add_argument('-x', '--no-config-check', action='store_true', help='Skip config verifiction checks')
 
@@ -501,7 +504,7 @@ def main():
     tsdbnodes = args.opentsdb_nodes
     kafkanodes = args.kafka_nodes
     zknodes = args.zk_nodes
-    flavour = args.flavour
+    flavor = args.flavour
     keyname = args.keyname
     no_config_check = args.no_config_check
     os.chdir('../')
@@ -524,17 +527,17 @@ def main():
             print "pnda cluster name may contain only  a-z 0-9 and '-'"
             pnda_cluster = None
 
-    while flavour is None:
-        flavour = raw_input("Enter a flavour (standard): ")
-        if not re.match("^(standard)$", flavour):
-            print "Not a valid flavour"
-            flavour = None
+    while flavor is None:
+        flavor = raw_input("Enter a flavor (standard): ")
+        if not re.match("^(standard)$", flavor):
+            print "Not a valid flavor"
+            flavor = None
 
     while keyname is None:
         keyname = raw_input("Enter a keypair name to use for ssh access to instances: ")
 
     global VALIDATION_RULES
-    validation_file = file('cloud-formation/%s/validation.json' % flavour)
+    validation_file = file('cloud-formation/%s/validation.json' % flavor)
     VALIDATION_RULES = json.load(validation_file)
     validation_file.close()
 
@@ -565,9 +568,9 @@ def main():
             elif  kafkanodes > node_counts['kafka']:
                 print "Increasing the number of kafkanodes from %s to %s" % (node_counts['kafka'], kafkanodes)
 
-            template_data = generate_template_file('cloud-formation/%s/cf-tmpl.json' % flavour,
+            template_data = generate_template_file('cloud-formation/%s/cf-tmpl.json' % flavor,
                                                    datanodes, node_counts['opentsdb'], kafkanodes, node_counts['zk'])
-            expand(template_data, pnda_cluster, flavour, node_counts['cdh-dn'], node_counts['kafka'], keyname)
+            expand(template_data, pnda_cluster, flavor, node_counts['cdh-dn'], node_counts['kafka'], keyname)
             sys.exit(0)
         else:
             print 'expand command must specify pnda_cluster, e.g.\npnda-cli.py expand -e squirrel-land -f standard -s keyname -n 5'
@@ -626,12 +629,12 @@ def main():
     node_limit("kafka-nodes", kafkanodes)
     node_limit("zk-nodes", zknodes)
 
-    template_data = generate_template_file('cloud-formation/%s/cf-tmpl.json' % flavour, datanodes, tsdbnodes, kafkanodes, zknodes)
-    console_dns = create(template_data, pnda_cluster, flavour, keyname, no_config_check)
+    template_data = generate_template_file('cloud-formation/%s/cf-tmpl.json' % flavor, datanodes, tsdbnodes, kafkanodes, zknodes)
+    console_dns = create(template_data, pnda_cluster, flavor, keyname, no_config_check)
     CONSOLE.info('Use the PNDA console to get started: http://%s', console_dns)
     CONSOLE.info(' Access hints:')
-    CONSOLE.info('  - Set up a socks proxy with: ./socks_proxy')
-    CONSOLE.info('  - ssh to a node with: ssh -F ssh_config <private_ip>')
+    CONSOLE.info('  - Set up a socks proxy with: chmod +x socks_proxy; ./socks_proxy')
+    CONSOLE.info('  - Ssh to a node with: ssh -F ssh_config <private_ip>')
 
 if __name__ == "__main__":
     try:

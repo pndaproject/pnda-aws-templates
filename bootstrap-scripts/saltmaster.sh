@@ -11,9 +11,9 @@ apt-get update
 apt-get -y install xfsprogs
 
 echo "Mounting xvdc for logs"
-umount /dev/xvdc || echo 'not mounted' 
+umount /dev/xvdc || echo 'not mounted'
 mkfs.xfs -f /dev/xvdc
-mkdir -p /var/log/panda  
+mkdir -p /var/log/panda
 sed -i "/xvdc/d" /etc/fstab
 echo "/dev/xvdc /var/log/panda auto defaults,nobootwait,comment=cloudconfig 0 2" >> /etc/fstab
 
@@ -24,9 +24,9 @@ for DISK in $DISKS; do
    if [ -b /dev/$DISK ];
    then
       echo "Mounting $DISK"
-      umount /dev/$DISK || echo 'not mounted' 
+      umount /dev/$DISK || echo 'not mounted'
       mkfs.xfs -f /dev/$DISK
-      mkdir -p /data$DISK_IDX  
+      mkdir -p /data$DISK_IDX
       sed -i "/$DISK/d" /etc/fstab
       echo "/dev/$DISK /data$DISK_IDX auto defaults,nobootwait,comment=cloudconfig 0 2" >> /etc/fstab
       DISK_IDX=$((DISK_IDX+1))
@@ -98,8 +98,8 @@ keystone.tenant: ''
 keystone.auth_url: ''
 keystone.region_name: ''
 aws.region: '$AWS_REGION'
-aws.key: '$AWS_ACCESS_KEY_ID'
-aws.secret: '$AWS_SECRET_ACCESS_KEY'
+aws.key: '$S3_ACCESS_KEY_ID'
+aws.secret: '$S3_SECRET_ACCESS_KEY'
 pnda.apps_container: '$PNDA_APPS_CONTAINER'
 pnda.apps_folder: '$PNDA_APPS_FOLDER'
 pnda.archive_container: '$PNDA_ARCHIVE_CONTAINER'
@@ -118,6 +118,14 @@ if [ "x$CLOUDERA_MIRROR" != "x" ] ; then
 cat << EOF >> /srv/salt/platform-salt/pillar/env_parameters.sls
 cloudera:
   parcel_repo: '$CLOUDERA_MIRROR'
+EOF
+fi
+
+if [ "x$ANACONDA_MIRROR" != "x" ] ; then
+cat << EOF >> /srv/salt/platform-salt/pillar/env_parameters.sls
+anaconda:
+  parcel_version: "4.0.0"
+  parcel_repo: '$ANACONDA_MIRROR'
 EOF
 fi
 
