@@ -16,17 +16,20 @@
 #
 #   Purpose: Script to create PNDA on Amazon Web Services EC2
 
+import uuid
 import re
 import subprocess
 import sys
 import os
 import os.path
 import json
+import yaml
 import time
 import logging
 import atexit
 import traceback
 import datetime
+import tarfile
 from threading import Thread
 
 import requests
@@ -52,17 +55,28 @@ NAME_REGEX = r"^[\.a-zA-Z0-9-]+$"
 VALIDATION_RULES = None
 START = datetime.datetime.now()
 
+RUNFILE = None
+def init_runfile(cluster):
+    global RUNFILE
+    RUNFILE = 'cli/logs/%s.%s.run' % (cluster, int(time.time()))
+
+def to_runfile(pairs):
+    '''
+    Append arbitrary pairs to a JSON dict on disk from anywhere in the code
+    '''
+    mode = 'w' if not os.path.isfile(RUNFILE) else 'r'
+    with open(RUNFILE, mode) as rf:
+        jrf = json.load(rf) if mode == 'r' else {}
+        jrf.update(pairs)
+        json.dump(jrf, rf)
+
 def banner():
     print r"    ____  _   ______  ___ "
     print r"   / __ \/ | / / __ \/   |"
-    print r"  / /_/ /  |/ / / / / /| |"  
-    print r" / ____/ /|  / /_/ / ___ |"   
+    print r"  / /_/ /  |/ / / / / /| |"
+    print r" / ____/ /|  / /_/ / ___ |"
     print r"/_/   /_/ |_/_____/_/  |_|"
     print r""
-
-def run_cmd(cmd):
-    print cmd
-    os.spawnvpe(os.P_WAIT, cmd[0], cmd, os.environ)
 
 @atexit.register
 def display_elasped():
@@ -71,35 +85,51 @@ def display_elasped():
     elapsed = datetime.datetime.now() - START
     CONSOLE.info("%sTotal execution time: %s%s", blue, str(elapsed), reset)
 
-def generate_template_file(filepath, datanodes, opentsdbs, kafkas, zookeepers):
-    with open(filepath, 'r') as template_file:
+def generate_template_file(flavor, datanodes, opentsdbs, kafkas, zookeepers):
+    common_filepath = 'cloud-formation/cf-common.json'
+    with open(common_filepath, 'r') as template_file:
         template_data = json.loads(template_file.read())
-        instance_cdh_dn = json.dumps(template_data['Resources'].pop('instanceCdhDn'))
+
+    flavor_filepath = 'cloud-formation/%s/cf-flavor.json' % flavor
+    with open(flavor_filepath, 'r') as template_file:
+        flavor_data = json.loads(template_file.read())
+
+    for element in flavor_data:
+        if element not in template_data:
+            template_data[element] = flavor_data[element]
+        else:
+            for child in flavor_data[element]:
+                template_data[element][child] = flavor_data[element][child]
+
+    instance_cdh_dn = json.dumps(template_data['Resources'].pop('instanceCdhDn'))
+    if 'instanceOpenTsdb' in template_data['Resources']:
         instance_open_tsdb = json.dumps(template_data['Resources'].pop('instanceOpenTsdb'))
+    if 'instanceKafka' in template_data['Resources']:
         instance_kafka = json.dumps(template_data['Resources'].pop('instanceKafka'))
+    if 'instanceZookeeper' in template_data['Resources']:
         instance_zookeeper = json.dumps(template_data['Resources'].pop('instanceZookeeper'))
 
-        for datanode in range(0, datanodes):
-            instance_cdh_dn_n = instance_cdh_dn.replace('$node_idx$', str(datanode))
-            template_data['Resources']['instanceCdhDn%s' % datanode] = json.loads(instance_cdh_dn_n)
+    for datanode in range(0, datanodes):
+        instance_cdh_dn_n = instance_cdh_dn.replace('$node_idx$', str(datanode))
+        template_data['Resources']['instanceCdhDn%s' % datanode] = json.loads(instance_cdh_dn_n)
 
-        for opentsdb in range(0, opentsdbs):
-            instance_open_tsdb_n = instance_open_tsdb.replace('$node_idx$', str(opentsdb))
-            template_data['Resources']['instanceOpenTsdb%s' % opentsdb] = json.loads(instance_open_tsdb_n)
+    for opentsdb in range(0, opentsdbs):
+        instance_open_tsdb_n = instance_open_tsdb.replace('$node_idx$', str(opentsdb))
+        template_data['Resources']['instanceOpenTsdb%s' % opentsdb] = json.loads(instance_open_tsdb_n)
 
-        for kafka in range(0, kafkas):
-            instance_kafka_n = instance_kafka.replace('$node_idx$', str(kafka))
-            template_data['Resources']['instanceKafka%s' % kafka] = json.loads(instance_kafka_n)
+    for kafka in range(0, kafkas):
+        instance_kafka_n = instance_kafka.replace('$node_idx$', str(kafka))
+        template_data['Resources']['instanceKafka%s' % kafka] = json.loads(instance_kafka_n)
 
-        for zookeeper in range(0, zookeepers):
-            instance_zookeeper_n = instance_zookeeper.replace('$node_idx$', str(zookeeper))
-            template_data['Resources']['instanceZookeeper%s' % zookeeper] = json.loads(instance_zookeeper_n)
+    for zookeeper in range(0, zookeepers):
+        instance_zookeeper_n = instance_zookeeper.replace('$node_idx$', str(zookeeper))
+        template_data['Resources']['instanceZookeeper%s' % zookeeper] = json.loads(instance_zookeeper_n)
 
     return json.dumps(template_data)
 
 def get_instance_map(cluster):
     CONSOLE.debug('Checking details of created instances')
-    region = os.environ['AWS_REGION']
+    region = pnda_env['ec2_access']['AWS_REGION']
     ec2 = boto.ec2.connect_to_region(region)
     reservations = ec2.get_all_reservations()
     instance_map = {}
@@ -119,7 +149,7 @@ def get_instance_map(cluster):
 
 def get_current_node_counts(cluster):
     CONSOLE.debug('Counting existing instances')
-    node_counts = {}
+    node_counts = {'zk':0, 'kafka':0, 'cdh-dn':0, 'opentsdb':0}
     for _, instance in get_instance_map(cluster).iteritems():
         if instance['node_type'] in node_counts:
             current_count = node_counts[instance['node_type']]
@@ -128,23 +158,23 @@ def get_current_node_counts(cluster):
         node_counts[instance['node_type']] = current_count + 1
     return node_counts
 
-def scp(files, host):
-    cmd = "scp -F cli/ssh_config %s %s:%s" % (' '.join(files), host, '/tmp')
+def scp(files, cluster, host):
+    cmd = "scp -F cli/ssh_config-%s %s %s:%s" % (cluster, ' '.join(files), host, '/tmp')
     CONSOLE.debug(cmd)
     ret_val = subprocess_to_log.call(cmd.split(' '), LOG, host)
     if ret_val != 0:
-        raise Exception("Error transfering files to new host %s via SCP. See debug log (%s) for details." % (host, LOG_FILE_NAME))
+        raise Exception("Error transferring files to new host %s via SCP. See debug log (%s) for details." % (host, LOG_FILE_NAME))
 
-def ssh(cmds, host):
-    cmd = "ssh -F cli/ssh_config %s" % host
+def ssh(cmds, cluster, host):
+    cmd = "ssh -F cli/ssh_config-%s %s" % (cluster, host)
     parts = cmd.split(' ')
     parts.append(';'.join(cmds))
-    CONSOLE.debug(parts)
+    CONSOLE.debug(json.dumps(parts))
     ret_val = subprocess_to_log.call(parts, LOG, host, scan_for_errors=['lost connection'])
     if ret_val != 0:
         raise Exception("Error running ssh commands on host %s. See debug log (%s) for details." % (host, LOG_FILE_NAME))
 
-def bootstrap(instance, saltmaster, cluster, flavor):
+def bootstrap(instance, saltmaster, cluster, flavor, branch):
     ret_val = None
     try:
         ip_address = instance['private_ip_address']
@@ -154,27 +184,23 @@ def bootstrap(instance, saltmaster, cluster, flavor):
         if not os.path.isfile(type_script):
             type_script = 'bootstrap-scripts/%s.sh' % (node_type)
         node_idx = instance['node_idx']
-        scp(['pnda_env.sh', 'bootstrap-scripts/base.sh', type_script], ip_address)
-        ssh(['source /tmp/pnda_env.sh',
+        scp(['cli/pnda_env_%s.sh' % cluster, 'bootstrap-scripts/base.sh', type_script], cluster, ip_address)
+        ssh(['source /tmp/pnda_env_%s.sh' % cluster,
              'export PNDA_SALTMASTER_IP=%s' % saltmaster,
              'export PNDA_CLUSTER=%s' % cluster,
              'export PNDA_FLAVOR=%s' % flavor,
+             'export PLATFORM_GIT_BRANCH=%s' % branch if branch is not None else ':',
              'sudo chmod a+x /tmp/base.sh',
-             'sudo -E /tmp/base.sh',
+             '(sudo -E /tmp/base.sh 2>&1) | tee -a pnda-bootstrap.log',
              'sudo chmod a+x /tmp/%s.sh' % node_type,
-             'sudo -E /tmp/%s.sh %s' % (node_type, node_idx)], ip_address)
+             '(sudo -E /tmp/%s.sh %s 2>&1) | tee -a pnda-bootstrap.log' % (node_type, node_idx)], cluster, ip_address)
     except:
         ret_val = 'Error for host %s. %s' % (instance['name'], traceback.format_exc())
     return ret_val
 
-def check_environment_variables():
-    try:
-        region = os.environ['AWS_REGION']
-        CONSOLE.debug('AWS region is %s', region)
-        CONSOLE.info('Env variables.... OK')
-    except:
-        CONSOLE.info('Env variables.... ERROR')
-        CONSOLE.error('Missing required environment variables, run "source ../client_env.sh" and try again.')
+def check_config_file():
+    if not os.path.exists('pnda_env.yaml'):
+        CONSOLE.error('Missing required pnda_env.yaml config file, make a copy of pnda_env_example.yaml named pnda_env.yaml, fill it out and try again.')
         sys.exit(1)
 
 def check_keypair(keyname, keyfile):
@@ -184,7 +210,7 @@ def check_keypair(keyname, keyfile):
         sys.exit(1)
 
     try:
-        region = os.environ['AWS_REGION']
+        region = pnda_env['ec2_access']['AWS_REGION']
         ec2 = boto.ec2.connect_to_region(region)
         stored_key = ec2.get_key_pair(keyname)
         if stored_key is None:
@@ -198,11 +224,11 @@ def check_keypair(keyname, keyfile):
 
 
 def check_aws_connection():
-    region = os.environ['AWS_REGION']
+    region = pnda_env['ec2_access']['AWS_REGION']
     conn = boto.cloudformation.connect_to_region(region)
     if conn is None:
-        CONSOLE.info('AWS connection... ERROR')        
-        CONSOLE.error('Failed to query cloud formation API, verify config in "client_env.sh" and try again.')
+        CONSOLE.info('AWS connection... ERROR')
+        CONSOLE.error('Failed to connect to cloud formation API, verify ec2_access settings in "pnda_env.yaml" and try again.')
         sys.exit(1)
 
     try:
@@ -210,41 +236,49 @@ def check_aws_connection():
         CONSOLE.info('AWS connection... OK')
     except:
         CONSOLE.info('AWS connection... ERROR')
-        CONSOLE.error('Failed to query cloud formation API, verify config in "client_env.sh" and try again.')
+        CONSOLE.error('Failed to query cloud formation API, verify ec2_access settings in "pnda_env.yaml" and try again.')
         CONSOLE.error(traceback.format_exc())
         sys.exit(1)
 
-def check_java_mirror(pnda_env):
+def check_java_mirror():
     try:
-        java_mirror = pnda_env['JAVA_MIRROR']
+        java_mirror = pnda_env['mirrors']['JAVA_MIRROR']
         response = requests.head(java_mirror)
         response.raise_for_status()
         CONSOLE.info('Java mirror...... OK')
     except KeyError:
         CONSOLE.info('Java mirror...... WARN')
-        CONSOLE.warning('Java mirror was not defined in pnda_env.sh,' +
+        CONSOLE.warning('Java mirror was not defined in pnda_env.yaml,' +
                         ' provisioning will be more reliable and quicker if you host this in the same AWS availability zone.')
     except:
         CONSOLE.info('Java mirror...... ERROR')
-        CONSOLE.error('Failed to connect to java mirror. Verify connection to %s, update config in pnda_env.sh if required and try again.', '')
+        CONSOLE.error('Failed to connect to java mirror. Verify connection to %s, update config in pnda_env.yaml if required and try again.', '')
         CONSOLE.error(traceback.format_exc())
         sys.exit(1)
 
-def check_package_server(pnda_env):
+def check_package_server():
     try:
-        package_uri = '%s/%s' % (pnda_env['PACKAGES_SERVER_URI'], 'platform/releases/')
+        package_uri = '%s/%s' % (pnda_env['pnda_component_packages']['PACKAGES_SERVER_URI'], 'platform/releases/')
         response = requests.head(package_uri)
         if response.status_code != 403 and response.status_code != 200:
             raise Exception("Unexpected status code from %s: %s" % (package_uri, response.status_code))
         CONSOLE.info('Package server... OK')
     except:
         CONSOLE.info('Package server... ERROR')
-        CONSOLE.error('Failed to connect to package server. Verify connection to %s, update URL in pnda_env.sh if required and try again.', package_uri)
+        CONSOLE.error('Failed to connect to package server. Verify connection to %s, update URL in pnda_env.yaml if required and try again.', package_uri)
         CONSOLE.error(traceback.format_exc())
         sys.exit(1)
 
-def write_ssh_config(bastion_ip, os_user, keyfile):
-    with open('cli/ssh_config', 'w') as config_file:
+def write_pnda_env_sh(cluster):
+    client_only = ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY']
+    with open('cli/pnda_env_%s.sh' % cluster, 'w') as pnda_env_sh_file:
+        for section in pnda_env:
+            for setting in pnda_env[section]:
+                if setting not in client_only:
+                    pnda_env_sh_file.write('export %s=%s\n' % (setting, pnda_env[section][setting]))
+
+def write_ssh_config(cluster, bastion_ip, os_user, keyfile):
+    with open('cli/ssh_config-%s' % cluster, 'w') as config_file:
         config_file.write('host *\n')
         config_file.write('    User %s\n' % os_user)
         config_file.write('    IdentityFile %s\n' % keyfile)
@@ -253,31 +287,30 @@ def write_ssh_config(bastion_ip, os_user, keyfile):
         config_file.write('    ProxyCommand ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s exec nc %%h %%p\n'
                           % (keyfile, os_user, bastion_ip))
 
-    with open('cli/socks_proxy', 'w') as config_file:
+    with open('cli/socks_proxy-%s' % cluster, 'w') as config_file:
         config_file.write('eval `ssh-agent`\n')
         config_file.write('ssh-add %s\n' % keyfile)
         config_file.write('ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -A -D 9999 %s@%s\n' % (keyfile, os_user, bastion_ip))
 
-def create(template_data, cluster, flavor, keyname, no_config_check):
+def create(template_data, cluster, flavor, keyname, no_config_check, branch):
+
+    init_runfile(cluster)
+
+    to_runfile({'cmdline':sys.argv,
+                'bastion':NODE_CONFIG['bastion-instance'],
+                'saltmaster':NODE_CONFIG['salt-master-instance']})
+
     keyfile = '%s.pem' % keyname
-    #load these from env variables from client_env.sh
+
+    region = pnda_env['ec2_access']['AWS_REGION']
+    image_id = pnda_env['ec2_access']['AWS_IMAGE_ID']
+    whitelist = pnda_env['ec2_access']['AWS_ACCESS_WHITELIST']
 
     if not no_config_check:
-        CONSOLE.info('Checking configuration...')
-        check_environment_variables()
-
-    region = os.environ['AWS_REGION']
-    image_id = os.environ['AWS_IMAGE_ID']
-    whitelist = os.environ['AWS_ACCESS_WHITELIST']
-
-    if not no_config_check:
-        settings_file_name = 'pnda_env.sh'
-        settings_file_contents = subprocess.Popen(['bash', '-c', 'source {} && env'.format(settings_file_name)], stdout=subprocess.PIPE).stdout
-        pnda_env = {entry_parts[0].strip(): entry_parts[1].strip() for entry_parts in [entry.strip().split('=', 1) for entry in settings_file_contents]}
         check_aws_connection()
         check_keypair(keyname, keyfile)
-        check_package_server(pnda_env)
-        check_java_mirror(pnda_env)
+        check_package_server()
+        check_java_mirror()
 
     CONSOLE.info('Creating Cloud Formation stack')
     conn = boto.cloudformation.connect_to_region(region)
@@ -302,26 +335,40 @@ def create(template_data, cluster, flavor, keyname, no_config_check):
         sys.exit(1)
 
     instance_map = get_instance_map(cluster)
-    write_ssh_config(instance_map[cluster+'-bastion']['ip_address'], os.environ['OS_USER'], os.path.abspath(keyfile))
-    CONSOLE.debug('The PNDA console will come up on: http://%s', instance_map[cluster+'-cdh-edge']['private_ip_address'])
+    write_ssh_config(cluster, instance_map[cluster + '-' + NODE_CONFIG['bastion-instance']]['ip_address'], pnda_env['ec2_access']['OS_USER'], os.path.abspath(keyfile))
+    CONSOLE.debug('The PNDA console will come up on: http://%s', instance_map[cluster + '-' + NODE_CONFIG['console-instance']]['private_ip_address'])
 
     CONSOLE.info('Bootstrapping saltmaster. Expect this to take a few minutes, check the debug log for progress (%s).', LOG_FILE_NAME)
-    saltmaster = instance_map[cluster+'-saltmaster']['private_ip_address']
-    scp(['bootstrap-scripts/saltmaster.sh', 'pnda_env.sh', 'client_env.sh', 'git.pem'], instance_map[cluster+'-saltmaster']['private_ip_address'])
-    ssh(['source /tmp/client_env.sh',
-         'source /tmp/pnda_env.sh',
-         'export PNDA_SALTMASTER_IP=%s' % saltmaster,
+    saltmaster = instance_map[cluster + '-' + NODE_CONFIG['salt-master-instance']]
+
+    platform_salt_tarball = None
+    if 'PLATFORM_SALT_LOCAL' in pnda_env['platform_salt']:
+        local_salt_path = pnda_env['platform_salt']['PLATFORM_SALT_LOCAL']
+        platform_salt_tarball = '%s.tmp' % str(uuid.uuid1())
+        with tarfile.open(platform_salt_tarball, mode='w:gz') as archive:
+            archive.add(local_salt_path, arcname='platform-salt', recursive=True)
+        scp([platform_salt_tarball], cluster, saltmaster['private_ip_address'])
+        os.remove(platform_salt_tarball)
+
+    sm_script = 'bootstrap-scripts/%s/%s.sh' % (flavor, saltmaster['node_type'])
+    if not os.path.isfile(sm_script):
+        sm_script = 'bootstrap-scripts/%s.sh' % (saltmaster['node_type'])
+    scp([sm_script, 'cli/pnda_env_%s.sh' % cluster, 'git.pem'], cluster, saltmaster['private_ip_address'])
+    ssh(['source /tmp/pnda_env_%s.sh' % cluster,
+         'export PNDA_SALTMASTER_IP=%s' % saltmaster['private_ip_address'],
          'export PNDA_CLUSTER=%s' % cluster,
          'export PNDA_FLAVOR=%s' % flavor,
-         'sudo chmod a+x /tmp/saltmaster.sh',
-         'sudo -E /tmp/saltmaster.sh'],
-        instance_map[cluster+'-saltmaster']['private_ip_address'])
+         'export PLATFORM_GIT_BRANCH=%s' % branch if branch is not None else ':',
+         'export PLATFORM_SALT_TARBALL=%s' % platform_salt_tarball if platform_salt_tarball is not None else ':',
+         'sudo chmod a+x /tmp/%s.sh' % saltmaster['node_type'],
+         '(sudo -E /tmp/%s.sh 2>&1) | tee -a pnda-bootstrap.log' % saltmaster['node_type']],
+        cluster, saltmaster['private_ip_address'])
 
     CONSOLE.info('Bootstrapping other instances. Expect this to take a few minutes, check the debug log for progress (%s).', LOG_FILE_NAME)
     bootstrap_threads = []
     for key, instance in instance_map.iteritems():
-        if 'saltmaster' not in key:
-            thread = Thread(target=bootstrap, args=[instance, saltmaster, cluster, flavor])
+        if '-' + NODE_CONFIG['salt-master-instance'] not in key:
+            thread = Thread(target=bootstrap, args=[instance, saltmaster['private_ip_address'], cluster, flavor, branch])
             bootstrap_threads.append(thread)
 
     for thread in bootstrap_threads:
@@ -334,20 +381,20 @@ def create(template_data, cluster, flavor, keyname, no_config_check):
             raise Exception("Error bootstrapping host, error msg: %s. See debug log (%s) for details." % (ret_val, LOG_FILE_NAME))
 
     time.sleep(30)
-
     CONSOLE.info('Running salt to install software. Expect this to take 45 minutes or more, check the debug log for progress (%s).', LOG_FILE_NAME)
-    ssh(['sudo salt -v --log-level=debug --state-output=mixed "*" state.highstate',
-         'sudo CLUSTER=%s salt-run --log-level=debug state.orchestrate orchestrate.pnda' % cluster,
-         'sudo salt "*-bastion" state.sls hostsfile'],
-        instance_map[cluster+'-saltmaster']['private_ip_address'])
-    return instance_map[cluster+'-cdh-edge']['private_ip_address']
+    bastion = NODE_CONFIG['bastion-instance']
+    ssh(['(sudo salt -v --log-level=debug --timeout=120 --state-output=mixed "*" state.highstate 2>&1) | tee -a pnda-salt.log',
+         '(sudo CLUSTER=%s salt-run --log-level=debug state.orchestrate orchestrate.pnda 2>&1) | tee -a pnda-salt.log' % cluster,
+         '(sudo salt "*-%s" state.sls hostsfile 2>&1) | tee -a pnda-salt.log' % bastion],
+        cluster, saltmaster['private_ip_address'])
+    return instance_map[cluster + '-' + NODE_CONFIG['console-instance']]['private_ip_address']
 
-def expand(template_data, cluster, flavor, old_datanodes, old_kafka, keyname):
+def expand(template_data, cluster, flavor, old_datanodes, old_kafka, keyname, branch):
     keyfile = '%s.pem' % keyname
-    #load these from env variables from client_env.sh
-    region = os.environ['AWS_REGION']
-    image_id = os.environ['AWS_IMAGE_ID']
-    whitelist = os.environ['AWS_ACCESS_WHITELIST']
+
+    region = pnda_env['ec2_access']['AWS_REGION']
+    image_id = pnda_env['ec2_access']['AWS_IMAGE_ID']
+    whitelist = pnda_env['ec2_access']['AWS_ACCESS_WHITELIST']
 
     CONSOLE.info('Updating Cloud Formation stack')
     conn = boto.cloudformation.connect_to_region(region)
@@ -372,15 +419,15 @@ def expand(template_data, cluster, flavor, old_datanodes, old_kafka, keyname):
         sys.exit(1)
 
     instance_map = get_instance_map(cluster)
-    write_ssh_config(instance_map[cluster+'-bastion']['ip_address'], os.environ['OS_USER'], os.path.abspath(keyfile))
-    saltmaster = instance_map[cluster+'-saltmaster']['private_ip_address']
+    write_ssh_config(cluster, instance_map[cluster + '-' + NODE_CONFIG['bastion-instance']]['ip_address'], pnda_env['ec2_access']['OS_USER'], os.path.abspath(keyfile))
+    saltmaster = instance_map[cluster + '-' + NODE_CONFIG['salt-master-instance']]['private_ip_address']
 
     CONSOLE.info('Bootstrapping new instances. Expect this to take a few minutes, check the debug log for progress. (%s)', LOG_FILE_NAME)
     bootstrap_threads = []
     for _, instance in instance_map.iteritems():
         if ((instance['node_type'] == 'cdh-dn' and int(instance['node_idx']) >= old_datanodes
              or instance['node_type'] == 'kafka' and int(instance['node_idx']) >= old_kafka)):
-            thread = Thread(target=bootstrap, args=[instance, saltmaster, cluster, flavor])
+            thread = Thread(target=bootstrap, args=[instance, saltmaster, cluster, flavor, branch])
             bootstrap_threads.append(thread)
 
     for thread in bootstrap_threads:
@@ -395,15 +442,16 @@ def expand(template_data, cluster, flavor, old_datanodes, old_kafka, keyname):
     time.sleep(30)
 
     CONSOLE.info('Running salt to install software. Expect this to take 10 - 20 minutes, check the debug log for progress. (%s)', LOG_FILE_NAME)
-    ssh(['sudo salt -v --log-level=debug --state-output=mixed "*" state.highstate',
-         'sudo CLUSTER=%s salt-run --log-level=debug state.orchestrate orchestrate.pnda-expand' % cluster,
-         'sudo salt "*-bastion" state.sls hostsfile'],
-        instance_map[cluster+'-saltmaster']['private_ip_address'])
-    return instance_map[cluster+'-cdh-edge']['private_ip_address']
+    bastion = NODE_CONFIG['bastion-instance']
+    ssh(['(sudo salt -v --log-level=debug --timeout=120 --state-output=mixed "*" state.highstate 2>&1) | tee -a pnda-salt.log',
+         '(sudo CLUSTER=%s salt-run --log-level=debug state.orchestrate orchestrate.pnda-expand 2>&1) | tee -a pnda-salt.log' % cluster,
+         '(sudo salt "*-%s" state.sls hostsfile 2>&1) | tee -a pnda-salt.log' % bastion],
+        cluster, saltmaster)
+    return instance_map[cluster + '-' + NODE_CONFIG['console-instance']]['private_ip_address']
 
 def destroy(cluster):
     CONSOLE.info('Deleting Cloud Formation stack')
-    region = os.environ['AWS_REGION']
+    region = pnda_env['ec2_access']['AWS_REGION']
     conn = boto.cloudformation.connect_to_region(region)
 
     stack_status = 'DELETING'
@@ -489,9 +537,10 @@ def get_args():
     parser.add_argument('-o', '--opentsdb-nodes', type=int, help='How many Open TSDB nodes for the hadoop cluster')
     parser.add_argument('-k', '--kafka-nodes', type=int, help='How many kafka nodes for the databus cluster')
     parser.add_argument('-z', '--zk-nodes', type=int, help='How many zookeeper nodes for the databus cluster')
-    parser.add_argument('-f', '--flavour', help='PNDA flavor: "standard"', choices=['standard'])
+    parser.add_argument('-f', '--flavour', help='PNDA flavor: "standard"', choices=['standard', 'pico'])
     parser.add_argument('-s', '--keyname', help='Keypair name')
     parser.add_argument('-x', '--no-config-check', action='store_true', help='Skip config verifiction checks')
+    parser.add_argument('-b', '--branch', help='Branch of platform-salt to use. Overrides value in pnda_env.yaml')
 
     args = parser.parse_args()
     return args
@@ -506,11 +555,29 @@ def main():
     zknodes = args.zk_nodes
     flavor = args.flavour
     keyname = args.keyname
+    branch = args.branch
     no_config_check = args.no_config_check
+
+    if not os.path.basename(os.getcwd()) == "cli":
+        print 'Please run from inside the /cli directory'
+        sys.exit(1)
+
     os.chdir('../')
+
+    global pnda_env
+    check_config_file()
+    with open('pnda_env.yaml', 'r') as infile:
+        pnda_env = yaml.load(infile)
+        os.environ['AWS_ACCESS_KEY_ID'] = pnda_env['ec2_access']['AWS_ACCESS_KEY_ID']
+        os.environ['AWS_SECRET_ACCESS_KEY'] = pnda_env['ec2_access']['AWS_SECRET_ACCESS_KEY']
+        print 'Using ec2 credentials:'
+        print '  AWS_REGION = %s' % pnda_env['ec2_access']['AWS_REGION']
+        print '  AWS_ACCESS_KEY_ID = %s' % pnda_env['ec2_access']['AWS_ACCESS_KEY_ID']
+        print '  AWS_SECRET_ACCESS_KEY = %s' % pnda_env['ec2_access']['AWS_SECRET_ACCESS_KEY']
+
     if not os.path.isfile('git.pem'):
         with open('git.pem', 'w') as git_key_file:
-            git_key_file.write('If authenticated acess to the platform-salt git repository is required then' +
+            git_key_file.write('If authenticated access to the platform-salt git repository is required then' +
                                ' replace this file with a key that grants access to the git server.\n')
 
     if args.command == 'destroy':
@@ -527,9 +594,11 @@ def main():
             print "pnda cluster name may contain only  a-z 0-9 and '-'"
             pnda_cluster = None
 
+    write_pnda_env_sh(pnda_cluster)
+
     while flavor is None:
-        flavor = raw_input("Enter a flavor (standard): ")
-        if not re.match("^(standard)$", flavor):
+        flavor = raw_input("Enter a flavor (standard/pico): ")
+        if not re.match("^(standard|pico)$", flavor):
             print "Not a valid flavor"
             flavor = None
 
@@ -540,6 +609,11 @@ def main():
     validation_file = file('cloud-formation/%s/validation.json' % flavor)
     VALIDATION_RULES = json.load(validation_file)
     validation_file.close()
+
+    global NODE_CONFIG
+    node_config_file = file('cloud-formation/%s/config.json' % flavor)
+    NODE_CONFIG = json.load(node_config_file)
+    node_config_file.close()
 
     if args.command == 'expand':
         if pnda_cluster is not None:
@@ -568,15 +642,14 @@ def main():
             elif  kafkanodes > node_counts['kafka']:
                 print "Increasing the number of kafkanodes from %s to %s" % (node_counts['kafka'], kafkanodes)
 
-            template_data = generate_template_file('cloud-formation/%s/cf-tmpl.json' % flavor,
-                                                   datanodes, node_counts['opentsdb'], kafkanodes, node_counts['zk'])
-            expand(template_data, pnda_cluster, flavor, node_counts['cdh-dn'], node_counts['kafka'], keyname)
+            template_data = generate_template_file(flavor, datanodes, node_counts['opentsdb'], kafkanodes, node_counts['zk'])
+            expand(template_data, pnda_cluster, flavor, node_counts['cdh-dn'], node_counts['kafka'], keyname, branch)
             sys.exit(0)
         else:
             print 'expand command must specify pnda_cluster, e.g.\npnda-cli.py expand -e squirrel-land -f standard -s keyname -n 5'
             sys.exit(1)
 
-    while datanodes is None:
+    while datanodes is None and get_validation("datanodes") != '0':
         datanodes = raw_input("Enter how many Hadoop data nodes (%s): " % get_validation("datanodes"))
         try:
             datanodes = int(datanodes)
@@ -588,7 +661,7 @@ def main():
             print "Consider choice again, limits are: %s" % get_validation("datanodes")
             datanodes = None
 
-    while tsdbnodes is None:
+    while tsdbnodes is None and get_validation("opentsdb-nodes") != '0':
         tsdbnodes = raw_input("Enter how many Open TSDB nodes (%s): " % get_validation("opentsdb-nodes"))
         try:
             tsdbnodes = int(tsdbnodes)
@@ -600,7 +673,7 @@ def main():
             print "Consider choice again, limits are: %s" % get_validation("opentsdb-nodes")
             tsdbnodes = None
 
-    while kafkanodes is None:
+    while kafkanodes is None and get_validation("kafka-nodes") != '0':
         kafkanodes = raw_input("Enter how many Kafka nodes (%s): " % get_validation("kafka-nodes"))
         try:
             kafkanodes = int(kafkanodes)
@@ -612,7 +685,7 @@ def main():
             print "Consider choice again, limits are: %s" % get_validation("kafka-nodes")
             kafkanodes = None
 
-    while zknodes is None:
+    while zknodes is None and get_validation("zk-nodes") != '0':
         zknodes = raw_input("Enter how many Zookeeper nodes (%s): " % get_validation("zk-nodes"))
         try:
             zknodes = int(zknodes)
@@ -624,17 +697,27 @@ def main():
             print "Consider choice again, limits are: %s" % get_validation("zk-nodes")
             zknodes = None
 
+    if datanodes is None:
+        datanodes = 0
+    if tsdbnodes is None:
+        tsdbnodes = 0
+    if kafkanodes is None:
+        kafkanodes = 0
+    if zknodes is None:
+        zknodes = 0
     node_limit("datanodes", datanodes)
     node_limit("opentsdb-nodes", tsdbnodes)
     node_limit("kafka-nodes", kafkanodes)
     node_limit("zk-nodes", zknodes)
 
-    template_data = generate_template_file('cloud-formation/%s/cf-tmpl.json' % flavor, datanodes, tsdbnodes, kafkanodes, zknodes)
-    console_dns = create(template_data, pnda_cluster, flavor, keyname, no_config_check)
+    template_data = generate_template_file(flavor, datanodes, tsdbnodes, kafkanodes, zknodes)
+    console_dns = create(template_data, pnda_cluster, flavor, keyname, no_config_check, branch)
     CONSOLE.info('Use the PNDA console to get started: http://%s', console_dns)
     CONSOLE.info(' Access hints:')
-    CONSOLE.info('  - Set up a socks proxy with: chmod +x socks_proxy; ./socks_proxy')
-    CONSOLE.info('  - Ssh to a node with: ssh -F ssh_config <private_ip>')
+    CONSOLE.info('  - The script ./socks_proxy-%s opens an SSH tunnel to the PNDA cluster listening on a port bound to localhost', pnda_cluster)
+    CONSOLE.info('  - Please review ./socks_proxy-%s and ensure it complies with your local security policies before use', pnda_cluster)
+    CONSOLE.info('  - Set up a socks proxy with: chmod +x socks_proxy-%s; ./socks_proxy-%s', pnda_cluster, pnda_cluster)
+    CONSOLE.info('  - SSH to a node with: ssh -F ssh_config-%s <private_ip>', pnda_cluster)
 
 if __name__ == "__main__":
     try:

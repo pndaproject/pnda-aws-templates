@@ -2,11 +2,11 @@
 
 set -e
 
-cat > /etc/salt/grains <<EOF
-pnda:
-  flavor: $PNDA_FLAVOR
+cat >> /etc/salt/grains <<EOF
 roles:
+  - elk
   - logserver
+  - kibana_dashboard
 pnda_cluster: $PNDA_CLUSTER
 EOF
 

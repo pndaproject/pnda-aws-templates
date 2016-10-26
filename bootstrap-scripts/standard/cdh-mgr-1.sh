@@ -2,17 +2,12 @@
 
 set -e
 
-cat > /etc/salt/grains <<EOF
-pnda:
-  flavor: $PNDA_FLAVOR
+cat >> /etc/salt/grains <<EOF
 cloudera:
   role: MGR01
 roles:
-  - cloudera_management
-  - cloudera_oozie_database
   - cloudera_namenode
-  - cloudera_zookeeper
-
+  - mysql_connector
 pnda_cluster: $PNDA_CLUSTER
 EOF
 

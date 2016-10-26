@@ -2,19 +2,24 @@
 
 set -e
 
-cat > /etc/salt/grains <<EOF
-pnda:
-  flavor: $PNDA_FLAVOR
+cat >> /etc/salt/grains <<EOF
 cloudera:
   role: EDGE
 roles:
   - cloudera_edge
   - console_frontend
-  - console_backend
+  - console_backend_data_logger
+  - console_backend_data_manager
+  - graphite
   - gobblin
   - deployment_manager
   - package_repository
   - data_service
+  - impala-shell
+  - yarn-gateway
+  - hbase_opentsdb_tables
+  - hdfs_cleaner
+  - master_dataset
 
 pnda_cluster: $PNDA_CLUSTER
 EOF

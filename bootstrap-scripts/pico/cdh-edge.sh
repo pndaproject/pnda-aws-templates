@@ -1,41 +1,13 @@
 #!/bin/bash -v
 
-set -ex
+set -e
 
 chmod 400 /tmp/git.pem
 echo "Host $PACKAGES_SERVER_IP" >> /root/.ssh/config
 echo "  IdentityFile /tmp/git.pem" >> /root/.ssh/config
 echo "  StrictHostKeyChecking no" >> /root/.ssh/config
 
-apt-get update
-apt-get -y install xfsprogs
 
-echo "Mounting xvdc for logs"
-umount /dev/xvdc || echo 'not mounted'
-mkfs.xfs -f /dev/xvdc
-mkdir -p /var/log/panda
-sed -i "/xvdc/d" /etc/fstab
-echo "/dev/xvdc /var/log/panda auto defaults,nobootwait,comment=cloudconfig 0 2" >> /etc/fstab
-
-DISKS="xvdd xvde xvdf"
-DISK_IDX=0
-for DISK in $DISKS; do
-   echo $DISK
-   if [ -b /dev/$DISK ];
-   then
-      echo "Mounting $DISK"
-      umount /dev/$DISK || echo 'not mounted'
-      mkfs.xfs -f /dev/$DISK
-      mkdir -p /data$DISK_IDX
-      sed -i "/$DISK/d" /etc/fstab
-      echo "/dev/$DISK /data$DISK_IDX auto defaults,nobootwait,comment=cloudconfig 0 2" >> /etc/fstab
-      DISK_IDX=$((DISK_IDX+1))
-   fi
-done
-cat /etc/fstab
-mount -a
-
-export DEBIAN_FRONTEND=noninteractive
 apt-get update && apt-get -y install python-pip
 apt-get -y install python-git
 wget -O install_salt.sh https://bootstrap.saltstack.com
@@ -78,6 +50,7 @@ EOF
 
 mkdir -p /srv/salt
 cd /srv/salt
+
 
 if [ "x$PLATFORM_GIT_REPO_URI" != "x" ]; then
   git clone -q --branch $PLATFORM_GIT_BRANCH $PLATFORM_GIT_REPO_URI
@@ -139,6 +112,7 @@ packages_server:
   base_uri: $PACKAGES_SERVER_URI
 EOF
 fi
+
 if [ "$PR_FS_TYPE" == "swift" ] ; then
 cat << EOF >> /srv/salt/platform-salt/pillar/env_parameters.sls
 package_repository:
@@ -167,7 +141,45 @@ package_repository:
 EOF
 fi
 
-echo $PNDA_CLUSTER-saltmaster > /etc/hostname
-hostname $PNDA_CLUSTER-saltmaster
-
 restart salt-master
+
+cat > /etc/salt/grains <<EOF
+pnda:
+  flavor: $PNDA_FLAVOR
+cloudera:
+  role: EDGE
+roles:
+  - cloudera_edge
+  - console_frontend
+  - console_backend_data_logger
+  - console_backend_data_manager
+  - graphite
+  - gobblin
+  - deployment_manager
+  - package_repository
+  - data_service
+  - cloudera_manager
+  - platform_testing_cdh
+  - mysql_connector
+  - jupyter
+  - elk
+  - logserver
+  - kibana_dashboard
+  - impala-shell
+  - yarn-gateway
+  - hbase_opentsdb_tables
+  - hdfs_cleaner
+  - master_dataset
+
+pnda_cluster: $PNDA_CLUSTER
+EOF
+
+cat >> /etc/salt/minion <<EOF
+master: $PNDA_SALTMASTER_IP
+id: $PNDA_CLUSTER-cdh-edge
+EOF
+
+echo $PNDA_CLUSTER-cdh-edge > /etc/hostname
+hostname $PNDA_CLUSTER-cdh-edge
+
+service salt-minion restart
