@@ -17,7 +17,7 @@
     },
     "instancetypeCdhDn" : {
       "Type" : "String",
-      "Default" : "c4.xlarge",
+      "Default" : "m4.xlarge",
       "Description" : "Instance type for CDH datanode"
     },
     "instancetypeEdge" : {
