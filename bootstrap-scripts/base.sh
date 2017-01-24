@@ -9,6 +9,15 @@
 
 set -e
 
+# If system packages are being installed from an offline bundle then download
+# that bundle and make the packages available for installation
+if [ "x$OS_PACKAGE_MIRROR" != "x" ] ; then
+wget ${OS_PACKAGE_MIRROR%/*}/apt-offline.deb
+dpkg -i apt-offline.deb
+wget $OS_PACKAGE_MIRROR
+apt-offline install ${OS_PACKAGE_MIRROR##*/}
+fi
+
 apt-get update
 apt-get -y install xfsprogs
 
@@ -18,9 +27,9 @@ then
    echo "Mounting xvdc for logs"
    umount /dev/xvdc || echo 'not mounted'
    mkfs.xfs -f /dev/xvdc
-   mkdir -p /var/log/panda
+   mkdir -p /var/log/pnda
    sed -i "/xvdc/d" /etc/fstab
-   echo "/dev/xvdc /var/log/panda auto defaults,nobootwait,comment=cloudconfig 0 2" >> /etc/fstab
+   echo "/dev/xvdc /var/log/pnda auto defaults,nobootwait,comment=cloudconfig 0 2" >> /etc/fstab
 fi
 # Mount the other log volumes if they exist, up to 3 more may be mounted but this list could be extended if required
 DISKS="xvdd xvde xvdf"
