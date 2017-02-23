@@ -19,12 +19,12 @@ yum -y install xfsprogs wget salt-minion-2015.8.11-1.el7
 fi
 
 # Mount the log volume, this is always xvdc
+mkdir -p /var/log/pnda
 if [ -b /dev/xvdc ];
 then
    echo "Mounting xvdc for logs"
    umount /dev/xvdc || echo 'not mounted'
    mkfs.xfs -f /dev/xvdc
-   mkdir -p /var/log/pnda
    sed -i "/xvdc/d" /etc/fstab
    echo "/dev/xvdc /var/log/pnda auto defaults 0 2" >> /etc/fstab
 fi
@@ -33,12 +33,12 @@ DISKS="xvdd xvde xvdf"
 DISK_IDX=0
 for DISK in $DISKS; do
    echo $DISK
+   mkdir -p /data$DISK_IDX
    if [ -b /dev/$DISK ];
    then
       echo "Mounting $DISK"
       umount /dev/$DISK || echo 'not mounted'
       mkfs.xfs -f /dev/$DISK
-      mkdir -p /data$DISK_IDX
       sed -i "/$DISK/d" /etc/fstab
       echo "/dev/$DISK /data$DISK_IDX auto defaults 0 2" >> /etc/fstab
       DISK_IDX=$((DISK_IDX+1))
@@ -57,7 +57,7 @@ cat >> /etc/salt/grains <<EOF
 pnda:
   flavor: $PNDA_FLAVOR
 
-pnda_cluster: $PNDA_CLUSTER 
+pnda_cluster: $PNDA_CLUSTER
 EOF
 
 PIP_INDEX_URL="$PNDA_MIRROR/mirror_python/simple"
