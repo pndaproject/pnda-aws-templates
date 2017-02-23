@@ -26,7 +26,7 @@ fi
 if [ "x$NTP_SERVERS" != "x" ]; then
 iptables -A LOGGING -d  $NTP_SERVERS -j ACCEPT # NTP server
 fi
-iptables -A LOGGING -d  10.0.0.0/16 -j ACCEPT # PNDA network
+iptables -A LOGGING -d  ${vpcCidr} -j ACCEPT # PNDA network
 iptables -A LOGGING -j REJECT
 fi
 

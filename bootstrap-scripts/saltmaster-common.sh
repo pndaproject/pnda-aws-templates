@@ -67,12 +67,13 @@ EOF
 # Set up platform-salt that contains the scripts the saltmaster runs to install software
 mkdir -p /srv/salt
 cd /srv/salt
+rm -rf platform-salt
 
 if [ "x$PLATFORM_GIT_REPO_URI" != "x" ]; then
   # Set up ssh access to the platform-salt git repo on the package server,
   # if secure access is required this key will be used automatically.
   # This mode is not normally used now the public github is available
-  chmod 400 /tmp/git.pem
+  chmod 400 /tmp/git.pem || true
 
   echo "Host $PLATFORM_GIT_REPO_HOST" >> /root/.ssh/config
   echo "  IdentityFile /tmp/git.pem" >> /root/.ssh/config

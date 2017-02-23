@@ -1,0 +1,26 @@
+{
+    "hadoop-edge": {
+        "node_type": "hadoop-edge",
+        "ip_address": "172.30.0.71",
+        "is_saltmaster": true,
+        "is_console": true
+    },
+    "hadoop-mgr-1": {
+        "node_type": "hadoop-mgr",
+        "ip_address": "172.30.0.243"
+    },
+    "hadoop-dn-0": {
+        "node_type": "hadoop-dn",
+        "ip_address": "172.30.0.237"
+    }, 
+    "kafka-0": {
+        "node_type": "kafka",
+        "ip_address": "172.30.0.198"
+    },
+    "bastion": {
+        "node_type": "bastion",
+        "ip_address": "172.30.0.6",
+        "public_ip_address": "54.246.231.242",
+        "is_bastion": true
+    }
+}

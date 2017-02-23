@@ -44,7 +44,7 @@ platform_salt:
   PLATFORM_GIT_REPO_HOST: github.com
 
   # The branch to select from PLATFORM_GIT_REPO_URI
-  PLATFORM_GIT_BRANCH: master
+  PLATFORM_GIT_BRANCH: develop
 
   # Local path to folder containing a clone of the platform salt repository
   # PLATFORM_SALT_LOCAL: /path/to/platform-salt
@@ -94,6 +94,12 @@ pnda_data_archive:
   # only allow access to the PNDA_ARCHIVE_CONTAINER bucket
   PNDA_ARCHIVE_ACCESS_KEY_ID: xxxx
   PNDA_ARCHIVE_SECRET_ACCESS_KEY: xxxx
+
+ntp:
+  # Optional ntp servers. Use this if the standard NTP servers on the Internet cannot be reached
+  # and a local NTP server has been configured. PNDA will not work without NTP.
+  # example format: 'xxx.ntp.org'
+  NTP_SERVERS: ''
 
 mirrors:
   # Mirror of resources required for provisioning PNDA, see PNDA guide for instructions on how to set this up
