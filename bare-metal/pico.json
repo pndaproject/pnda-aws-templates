@@ -1,0 +1,26 @@
+{
+    "cdh-edge": {
+        "node_type": "cdh-edge",
+        "ip_address": "10.2.1.101",
+        "is_saltmaster": true,
+        "is_console": true
+    },
+    "cdh-mgr-1": {
+        "node_type": "cdh-mgr",
+        "ip_address": "10.2.1.102"
+    },
+    "cdh-dn-0": {
+        "node_type": "cdh-dn",
+        "ip_address": "10.2.1.103"
+    }, 
+    "kafka-0": {
+        "node_type": "kafka",
+        "ip_address": "10.2.1.104"
+    },
+    "bastion": {
+        "node_type": "bastion",
+        "ip_address": "10.2.1.105",
+        "public_ip_address": "10.2.0.101",
+        "is_bastion": true
+    }
+}

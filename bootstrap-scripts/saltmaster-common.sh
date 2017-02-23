@@ -13,7 +13,7 @@ DISTRO=$(cat /etc/*-release|grep ^ID\=|awk -F\= {'print $2'}|sed s/\"//g)
 if [ "x$DISTRO" == "xubuntu" ]; then
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get -y install unzip=6.0-9ubuntu1.5 salt-master=2015.8.11+ds-1 git=1:1.9.1-1ubuntu0.4
+apt-get -y install unzip=6.0-9ubuntu1.5 salt-master=2015.8.11+ds-1 git=1:1.9.1-1ubuntu0.5
 fi
 
 if [ "x$DISTRO" == "xrhel" ]; then
@@ -57,12 +57,13 @@ EOF
 # Set up platform-salt that contains the scripts the saltmaster runs to install software
 mkdir -p /srv/salt
 cd /srv/salt
+rm -rf platform-salt
 
 if [ "x$PLATFORM_GIT_REPO_URI" != "x" ]; then
   # Set up ssh access to the platform-salt git repo on the package server,
   # if secure access is required this key will be used automatically.
   # This mode is not normally used now the public github is available
-  chmod 400 /tmp/git.pem
+  chmod 400 /tmp/git.pem || true
 
   echo "Host $PLATFORM_GIT_REPO_HOST" >> /root/.ssh/config
   echo "  IdentityFile /tmp/git.pem" >> /root/.ssh/config
@@ -144,5 +145,13 @@ cat << EOF >> /srv/salt/platform-salt/pillar/env_parameters.sls
 package_repository:
   fs_type: "$PR_FS_TYPE"
   fs_location_path: "$PR_FS_LOCATION_PATH"
+EOF
+fi
+
+if [ "x$NTP_SERVERS" != "x" ] ; then
+cat << EOF >> /srv/salt/platform-salt/pillar/env_parameters.sls
+ntp:
+  servers:
+    - "$NTP_SERVERS"
 EOF
 fi
