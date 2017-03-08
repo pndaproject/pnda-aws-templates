@@ -4,17 +4,17 @@
   "Parameters" : {
     "instancetypeBastion" : {
       "Type" : "String",
-      "Default" : "t2.medium",
+      "Default" : "r4.large",
       "Description" : "Instance type for the access bastion"
     },    
     "instancetypeLogserver" : {
       "Type" : "String",
-      "Default" : "m3.large",
+      "Default" : "r4.large",
       "Description" : "Instance type for logserver"
     },
     "instancetypeDbZookeeper" : {
       "Type" : "String",
-      "Default" : "m3.large",
+      "Default" : "r4.large",
       "Description" : "Instance type for databus zookeeper"
     },
     "instancetypeDbKafka" : {
@@ -39,12 +39,12 @@
     },
     "instancetypeJupyter" : {
       "Type" : "String",
-      "Default" : "m3.large",
+      "Default" : "r4.large",
       "Description" : "Instance type for Jupyter"
     },
     "instancetypeSaltmaster" : {
       "Type" : "String",
-      "Default" : "m3.large",
+      "Default" : "r4.large",
       "Description" : "Instance type for saltmaster"
     },
     "instancetypeCdhCm" : {
@@ -54,12 +54,12 @@
     },
     "instancetypeCdhEdge" : {
       "Type" : "String",
-      "Default" : "t2.medium",
+      "Default" : "r4.large",
       "Description" : "Instance type for CDH edge node"
     },
     "instancetypeDbTools" : {
       "Type" : "String",
-      "Default" : "m3.large",
+      "Default" : "r4.large",
       "Description" : "Instance type for databus tools"
     },
     "whitelistSshAccess" : {
@@ -69,7 +69,7 @@
     },
     "instancetypeESMaster" : {
       "Type" : "String",
-      "Default" : "t2.medium",
+      "Default" : "r4.large",
       "Description" : "Instance type for ELK ES cluster master node"  
     },
     "instancetypeESIngest" : {
