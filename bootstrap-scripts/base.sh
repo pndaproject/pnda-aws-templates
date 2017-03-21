@@ -12,12 +12,7 @@ set -e
 DISTRO=$(cat /etc/*-release|grep ^ID\=|awk -F\= {'print $2'}|sed s/\"//g)
 
 if [ "x$DISTRO" == "xubuntu" ]; then
-rm -rf /etc/apt/sources.list.d/*
-rm -rf /etc/apt/sources.list
-touch /etc/apt/sources.list
-cat > /etc/apt/sources.list.d/local.list <<EOF
-  deb $PNDA_MIRROR/mirror_deb/ ./
-EOF
+echo -e "deb $PNDA_MIRROR/mirror_deb/ ./\n$(cat /etc/apt/sources.list)" > /etc/apt/sources.list
 wget -O - $PNDA_MIRROR/mirror_deb/pnda.gpg.key | apt-key add -
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
