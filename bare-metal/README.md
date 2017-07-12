@@ -6,7 +6,7 @@ PNDA can be installed using the AWS CLI onto pre-existing machines or 'bare-meta
    - 17 machines for standard.
    - On every machine, a log volume of 10GB or more at /dev/xvdc.
    - On the data node, one to three volumes of 35GB or more at /dev/xvdd /dev/xvde /dev/xvdf for data.
-   - If your devices are not named xvd{c|d|e|f} then edit [this file](https://github.com/pndaproject/pnda-aws-templates/blob/bare-metal/bootstrap-scripts/base.sh) so the disk volumes you have are mounted at the right places.
+   - If your devices are not named xvd{c|d|e|f} then edit [this file](../bootstrap-scripts/base.sh) so the disk volumes you have are mounted at the right places.
 2. Install either Ubuntu 14.04 or Redhat Enterprise Linux 7 on all machines
 3. If not already in place, setup ssh key based access to the machines.
    - create an RSA keypair to use to access the machines:
