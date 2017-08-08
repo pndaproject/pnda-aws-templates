@@ -1,6 +1,21 @@
-# Existing Machines Install Guide
-PNDA can be installed using the AWS CLI onto pre-existing machines.
+# Installing PNDA onto Existing Machines
 
+## What does this mean
+PNDA can be installed using the AWS CLI onto pre-existing machines. In this mode the Cloud Formation parts of the pnda-cli are disabled and it runs only the bootstrap and saltstack stages of PNDA creation.
+
+The bootstrap stage involves running [shell scripts](../bootstrap-scripts) on each machine to install a saltstack cluster with each minion having the correct set of salt roles.
+
+The saltstack stage involves running various [salt states](https://github.com/pndaproject/platform-salt) to install the PNDA software
+
+## Overview
+By following the detailed guide below you can install PNDA onto a set of pre-existing machines. For a high level overview, this involves:
+
+ - Finding some machines and ensuring they have an operating system, key based log in, appropriate disk drives and networking all set up before running the pnda-cli.
+ - Writing a [json descriptor](pico.json) that defines the IP address and type of each machine in the cluster.
+ - Creating a PNDA mirror to serve the resources used to create PNDA.
+ - Running the pnda-cli to install a saltstack cluster across the set of machines and then saltstack commands to install all of the PNDA software.
+
+## Existing Machines Install Guide
 1. Obtain a set of machines on which to install PNDA. The requirements are:
    -  5 machines for pico. See [the PNDA guide](https://github.com/pndaproject/pnda-guide/blob/develop/provisioning/aws/PREPARE.md#required-resources) for suggested CPU and memory requirements for each machine.
    - 17 machines for standard.
