@@ -8,6 +8,8 @@ ec2_access:
   AWS_REGION: eu-west-1
 
   # The user name to use when logging into the AWS ec2 instances
+  # Ubuntu: ubuntu
+  # Redhat: ec2-user
   OS_USER: ubuntu
 
 cloud_formation_parameters:
@@ -15,7 +17,9 @@ cloud_formation_parameters:
   # creating the cloud formation template. The cloud formation template must
   # define a matching input parameter for each value listed here.
 
-  # Base image to use, should be a standard 64-bit Ubuntu 14.04
+  # Base image to use, use the default AWS Ubuntu/Redhat image for the AWS region 
+  # Ubuntu: 64-bit Ubuntu 14.04
+  # Redhat: Red Hat Enterprise Linux 7
   imageId: ami-f95ef58a
 
   # CIDR specifying the address range that may access the created PNDA instances
@@ -34,6 +38,10 @@ platform_salt:
 
   # URI of platform salt git repository
   PLATFORM_GIT_REPO_URI: https://github.com/pndaproject/platform-salt.git
+
+  # Host name of server for platform salt git repository. Make sure to set this if
+  # authenticated ssh access (using git.pem) to the git repo is desired.
+  PLATFORM_GIT_REPO_HOST: github.com
 
   # The branch to select from PLATFORM_GIT_REPO_URI
   PLATFORM_GIT_BRANCH: master
@@ -80,19 +88,11 @@ pnda_data_archive:
   PNDA_ARCHIVE_ACCESS_KEY_ID: xxxx
   PNDA_ARCHIVE_SECRET_ACCESS_KEY: xxxx
 
-pnda_component_packages:
-  # HTTP server containing the compiled binary packages for the components
-  # required to provision PNDA
-  PACKAGES_SERVER_URI: http://x.x.x.x/packages
-
 mirrors:
-  # These mirrors are optional and may be hosted on any HTTP server, including the PNDA component package server
-  # CLOUDERA_MIRROR: http://x.x.x.x/cloudera_repo
-  # ANACONDA_MIRROR: http://x.x.x.x/anaconda_repo
-  # OS_PACKAGE_MIRROR: http://x.x.x.x/components/deb-pkg/pnda-debs.zip
-
-  # These mirrors are mandatory and may be hosted on any HTTP server, including the PNDA component package server
-  JAVA_MIRROR: http://x.x.x.x/components/java/jdk/8u74-b02/jdk-8u74-linux-x64.tar.gz
+  # Mirror of resources required for provisioning PNDA, see PNDA guide for instructions on how to set this up
+  PNDA_MIRROR: http://x.x.x.x
+  # For offline tests: remove yum repo if YUM_OFFLINE is not empty
+  # YUM_OFFLINE: ''
 
 elk-cluster:
   # number of master nodes

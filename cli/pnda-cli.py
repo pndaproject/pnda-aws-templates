@@ -46,10 +46,13 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 LOG_FILE_NAME = 'logs/pnda-cli.%s.log' % time.time()
 logging.basicConfig(filename=LOG_FILE_NAME,
                     level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+                    format='%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+
+LOG_FORMATTER = logging.Formatter(fmt='%(asctime)s %(levelname)-8s %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 LOG = logging.getLogger('everything')
 CONSOLE = logging.getLogger('console')
 CONSOLE.addHandler(logging.StreamHandler())
+CONSOLE.handlers[0].setFormatter(LOG_FORMATTER)
 
 NAME_REGEX = r"^[\.a-zA-Z0-9-]+$"
 VALIDATION_RULES = None
@@ -60,6 +63,9 @@ START = datetime.datetime.now()
 THROW_BASH_ERROR = "cmd_result=${PIPESTATUS[0]} && if [ ${cmd_result} != '0' ]; then exit ${cmd_result}; fi"
 
 RUNFILE = None
+
+MILLI_TIME = lambda: int(round(time.time() * 1000))
+
 def init_runfile(cluster):
     global RUNFILE
     RUNFILE = 'cli/logs/%s.%s.run' % (cluster, int(time.time()))
@@ -89,8 +95,26 @@ def display_elasped():
     elapsed = datetime.datetime.now() - START
     CONSOLE.info("%sTotal execution time: %s%s", blue, str(elapsed), reset)
 
+def save_cf_resources(context, cluster_name, params, template):
+    params_file = 'cli/logs/%s_%s_cloud-formation-parameters.json' % (cluster_name, context)
+    CONSOLE.info('Writing Cloud Formation parameters for %s to %s', cluster_name, params_file)
+    with open(params_file, 'w') as outfile:
+        json.dump(params, outfile, sort_keys=True, indent=4)
 
-def generate_template_file(flavor, datanodes, opentsdbs, kafkas, zookeepers, esmasters, esingests, esdatas, escoords, esmultis, logstashNodes):
+    template_file = 'cli/logs/%s_%s_cloud-formation-template.json' % (cluster_name, context)
+    CONSOLE.info('Writing Cloud Formation template for %s to %s', cluster_name, template_file)
+    with open(template_file, 'w') as outfile:
+        json.dump(json.loads(template), outfile, sort_keys=True, indent=4)
+
+def generate_instance_templates(template_data, instance_name, instance_count):
+    if instance_name in template_data['Resources']:
+        instance_def = json.dumps(template_data['Resources'].pop(instance_name))
+
+    for instance_index in range(0, instance_count):
+        instance_def_n = instance_def.replace('$node_idx$', str(instance_index))
+        template_data['Resources']['%s%s' % (instance_name, instance_index)] = json.loads(instance_def_n)
+
+def generate_template_file(flavor, datanodes, opentsdbs, kafkas, zookeepers, esmasters, esingests, esdatas, escoords, esmultis, logstashs):
     common_filepath = 'cloud-formation/cf-common.json'
     with open(common_filepath, 'r') as template_file:
         template_data = json.loads(template_file.read())
@@ -106,65 +130,16 @@ def generate_template_file(flavor, datanodes, opentsdbs, kafkas, zookeepers, esm
             for child in flavor_data[element]:
                 template_data[element][child] = flavor_data[element][child]
 
-    instance_cdh_dn = json.dumps(template_data['Resources'].pop('instanceCdhDn'))
-    if 'instanceOpenTsdb' in template_data['Resources']:
-        instance_open_tsdb = json.dumps(template_data['Resources'].pop('instanceOpenTsdb'))
-    if 'instanceKafka' in template_data['Resources']:
-        instance_kafka = json.dumps(template_data['Resources'].pop('instanceKafka'))
-    if 'instanceZookeeper' in template_data['Resources']:
-        instance_zookeeper = json.dumps(template_data['Resources'].pop('instanceZookeeper'))
-    if 'instanceESMaster' in template_data['Resources']:
-        instance_esmaster = json.dumps(template_data['Resources'].pop('instanceESMaster'))
-    if 'instanceESData' in template_data['Resources']:
-        instance_esdata = json.dumps(template_data['Resources'].pop('instanceESData'))
-    if 'instanceESIngest' in template_data['Resources']:
-        instance_esingest = json.dumps(template_data['Resources'].pop('instanceESIngest'))
-    if 'instanceESCoordinator' in template_data['Resources']:
-        instance_escoordinator = json.dumps(template_data['Resources'].pop('instanceESCoordinator'))
-    if 'instanceESMulti' in template_data['Resources']:
-        instance_esmulti = json.dumps(template_data['Resources'].pop('instanceESMulti'))
-    if 'instanceLogstash' in template_data['Resources']:
-        instance_logstash = json.dumps(template_data['Resources'].pop('instanceLogstash'))
-
-    for datanode in range(0, datanodes):
-        instance_cdh_dn_n = instance_cdh_dn.replace('$node_idx$', str(datanode))
-        template_data['Resources']['instanceCdhDn%s' % datanode] = json.loads(instance_cdh_dn_n)
-
-    for opentsdb in range(0, opentsdbs):
-        instance_open_tsdb_n = instance_open_tsdb.replace('$node_idx$', str(opentsdb))
-        template_data['Resources']['instanceOpenTsdb%s' % opentsdb] = json.loads(instance_open_tsdb_n)
-
-    for kafka in range(0, kafkas):
-        instance_kafka_n = instance_kafka.replace('$node_idx$', str(kafka))
-        template_data['Resources']['instanceKafka%s' % kafka] = json.loads(instance_kafka_n)
-
-    for zookeeper in range(0, zookeepers):
-        instance_zookeeper_n = instance_zookeeper.replace('$node_idx$', str(zookeeper))
-        template_data['Resources']['instanceZookeeper%s' % zookeeper] = json.loads(instance_zookeeper_n)
-
-    for esmaster in range(0, esmasters):
-        instance_esmaster_n = instance_esmaster.replace('$node_idx$', str(esmaster))
-        template_data['Resources']['instanceESMaster%s' % esmaster] = json.loads(instance_esmaster_n)
-    
-    for esingest in range(0, esingests):
-        instance_esingest_n = instance_esingest.replace('$node_idx$', str(esingest))
-        template_data['Resources']['instanceESIngest%s' % esingest] = json.loads(instance_esingest_n)
-    
-    for esdata in range(0, esdatas):
-        instance_esdata_n = instance_esdata.replace('$node_idx$', str(esdata))
-        template_data['Resources']['instanceESData%s' % esdata] = json.loads(instance_esdata_n)
-    
-    for escoord in range(0, escoords):
-        instance_escoordinator_n = instance_escoordinator.replace('$node_idx$', str(escoord))
-        template_data['Resources']['instanceESCoordinator%s' % escoord] = json.loads(instance_escoordinator_n)
-
-    for esmulti in range(0, esmultis):
-        instance_esmulti_n = instance_esmulti.replace('$node_idx$', str(esmulti))
-        template_data['Resources']['instanceESMulti%s' % esmulti] = json.loads(instance_esmulti_n)
-
-    for eslogstash in range(0, logstashNodes):
-        instance_logstash_n = instance_logstash.replace('$node_idx$', str(eslogstash))
-        template_data['Resources']['instanceLogstash%s' % eslogstash] = json.loads(instance_logstash_n)
+    generate_instance_templates(template_data, 'instanceCdhDn', datanodes)
+    generate_instance_templates(template_data, 'instanceOpenTsdb', opentsdbs)
+    generate_instance_templates(template_data, 'instanceKafka', kafkas)
+    generate_instance_templates(template_data, 'instanceZookeeper', zookeepers)
+    generate_instance_templates(template_data, 'instanceESMaster', esmasters)
+    generate_instance_templates(template_data, 'instanceESData', esdatas)
+    generate_instance_templates(template_data, 'instanceESIngest', esingests)
+    generate_instance_templates(template_data, 'instanceESCoordinator', escoords)
+    generate_instance_templates(template_data, 'instanceESMulti', esmultis)
+    generate_instance_templates(template_data, 'instanceLogstash', logstashs)
 
     return json.dumps(template_data)
 
@@ -215,7 +190,7 @@ def ssh(cmds, cluster, host):
     if ret_val != 0:
         raise Exception("Error running ssh commands on host %s. See debug log (%s) for details." % (host, LOG_FILE_NAME))
 
-def bootstrap(instance, saltmaster, cluster, flavor, branch, error_queue):
+def bootstrap(instance, saltmaster, cluster, flavor, branch, salt_tarball, error_queue):
     ret_val = None
     try:
         ip_address = instance['private_ip_address']
@@ -225,17 +200,29 @@ def bootstrap(instance, saltmaster, cluster, flavor, branch, error_queue):
         if not os.path.isfile(type_script):
             type_script = 'bootstrap-scripts/%s.sh' % (node_type)
         node_idx = instance['node_idx']
-        scp(['cli/pnda_env_%s.sh' % cluster, 'bootstrap-scripts/base.sh', type_script], cluster, ip_address)
-        ssh(['source /tmp/pnda_env_%s.sh' % cluster,
-             'export PNDA_SALTMASTER_IP=%s' % saltmaster,
-             'export PNDA_CLUSTER=%s' % cluster,
-             'export PNDA_FLAVOR=%s' % flavor,
-             'export PLATFORM_GIT_BRANCH=%s' % branch,
-             'sudo chmod a+x /tmp/base.sh',
-             '(sudo -E /tmp/base.sh 2>&1) | tee -a pnda-bootstrap.log; %s' % THROW_BASH_ERROR,
-             'sudo chmod a+x /tmp/%s.sh' % node_type,
-             # TODO: Add param to number of master of instances (perhaps hard coded in salt?)
-             '(sudo -E /tmp/%s.sh %s 2>&1) | tee -a pnda-bootstrap.log; %s' % (node_type, node_idx, THROW_BASH_ERROR)], cluster, ip_address)
+        files_to_scp = ['cli/pnda_env_%s.sh' % cluster, 'bootstrap-scripts/package-install.sh', 'bootstrap-scripts/base.sh', type_script]
+        cmds_to_run = ['source /tmp/pnda_env_%s.sh' % cluster,
+                       'export PNDA_SALTMASTER_IP=%s' % saltmaster,
+                       'export PNDA_CLUSTER=%s' % cluster,
+                       'export PNDA_FLAVOR=%s' % flavor,
+                       'export PLATFORM_GIT_BRANCH=%s' % branch,
+                       'export PLATFORM_SALT_TARBALL=%s' % salt_tarball if salt_tarball is not None else ':',
+                       'sudo chmod a+x /tmp/package-install.sh',
+                       'sudo chmod a+x /tmp/base.sh',
+                       '(sudo -E /tmp/package-install.sh 2>&1) | tee -a pnda-bootstrap.log; %s' % THROW_BASH_ERROR,
+                       '(sudo -E /tmp/base.sh 2>&1) | tee -a pnda-bootstrap.log; %s' % THROW_BASH_ERROR]
+
+        if node_type == NODE_CONFIG['salt-master-instance']:
+            files_to_scp.append('bootstrap-scripts/saltmaster-common.sh')
+            cmds_to_run.append('sudo chmod a+x /tmp/saltmaster-common.sh')
+            cmds_to_run.append('(sudo -E /tmp/saltmaster-common.sh 2>&1) | tee -a pnda-bootstrap.log; %s' % THROW_BASH_ERROR)
+            files_to_scp.append('git.pem')
+
+        cmds_to_run.append('sudo chmod a+x /tmp/%s.sh' % node_type)
+        cmds_to_run.append('(sudo -E /tmp/%s.sh %s 2>&1) | tee -a pnda-bootstrap.log; %s' % (node_type, node_idx, THROW_BASH_ERROR))
+
+        scp(files_to_scp, cluster, ip_address)
+        ssh(cmds_to_run, cluster, ip_address)
     except:
         ret_val = 'Error for host %s. %s' % (instance['name'], traceback.format_exc())
         CONSOLE.error(ret_val)
@@ -283,34 +270,33 @@ def check_aws_connection():
         CONSOLE.error(traceback.format_exc())
         sys.exit(1)
 
-def check_java_mirror():
-    try:
-        java_mirror = PNDA_ENV['mirrors']['JAVA_MIRROR']
-        response = requests.head(java_mirror)
-        response.raise_for_status()
-        CONSOLE.info('Java mirror...... OK')
-    except KeyError:
-        CONSOLE.info('Java mirror...... WARN')
-        CONSOLE.warning('Java mirror was not defined in pnda_env.yaml,' +
-                        ' provisioning will be more reliable and quicker if you host this in the same AWS availability zone.')
-    except:
-        CONSOLE.info('Java mirror...... ERROR')
-        CONSOLE.error('Failed to connect to java mirror. Verify connection to %s, update config in pnda_env.yaml if required and try again.', '')
+def check_pnda_mirror():
+
+    def raise_error(reason):
+        CONSOLE.info('PNDA mirror...... ERROR')
+        CONSOLE.error(reason)
         CONSOLE.error(traceback.format_exc())
         sys.exit(1)
 
-def check_package_server():
     try:
-        package_uri = '%s/%s' % (PNDA_ENV['pnda_component_packages']['PACKAGES_SERVER_URI'], 'platform/releases/')
-        response = requests.head(package_uri)
-        if response.status_code != 403 and response.status_code != 200:
-            raise Exception("Unexpected status code from %s: %s" % (package_uri, response.status_code))
-        CONSOLE.info('Package server... OK')
+        mirror = PNDA_ENV['mirrors']['PNDA_MIRROR']
+        response = requests.head(mirror)
+        # expect 200 (open mirror) 403 (no listing allowed)
+        # or any redirect (in case of proxy/redirect)
+        if response.status_code not in [200, 403, 301, 302, 303, 307, 308]:
+            raise_error("PNDA mirror configured and present "
+                        "but responded with unexpected status code (%s). " % response.status_code)
+        CONSOLE.info('PNDA mirror...... OK')
+    except KeyError:
+        raise_error('PNDA mirror was not defined in pnda_env.yaml')
     except:
-        CONSOLE.info('Package server... ERROR')
-        CONSOLE.error('Failed to connect to package server. Verify connection to %s, update URL in pnda_env.yaml if required and try again.', package_uri)
-        CONSOLE.error(traceback.format_exc())
-        sys.exit(1)
+        raise_error("Failed to connect to PNDA mirror. Verify connection "
+                    "to %s, check mirror in pnda_env.yaml and try again." % mirror)
+
+def check_config(keyname, keyfile):
+    check_aws_connection()
+    check_keypair(keyname, keyfile)
+    check_pnda_mirror()
 
 def write_pnda_env_sh(cluster):
     client_only = ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'PLATFORM_GIT_BRANCH']
@@ -335,12 +321,32 @@ def write_ssh_config(cluster, bastion_ip, os_user, keyfile):
         config_file.write('ssh-add %s\n' % keyfile)
         config_file.write('ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -A -D 9999 %s@%s\n' % (keyfile, os_user, bastion_ip))
 
-def create(template_data, cluster, flavor, keyname, no_config_check, branch):
+def process_errors(errors):
+    while not errors.empty():
+        error_message = errors.get()
+        raise Exception("Error bootstrapping host, error msg: %s. See debug log (%s) for details." % (error_message, LOG_FILE_NAME))
+
+def wait_for_host_connectivity(hosts, cluster):
+    for host in hosts:
+        attempts_per_host = 150
+        while attempts_per_host > 0:
+            try:
+                CONSOLE.info('Checking connectivity to %s', host)
+                ssh(['ls ~'], cluster, host)
+                break
+            except:
+                CONSOLE.info('Still waiting for connectivity to %s. See debug log (%s) for details.', host, LOG_FILE_NAME)
+                LOG.info(traceback.format_exc())
+                attempts_per_host -= 1
+                time.sleep(2)
+
+def create(template_data, cluster, flavor, keyname, no_config_check, dry_run, branch):
 
     init_runfile(cluster)
+    bastion = NODE_CONFIG['bastion-instance']
 
     to_runfile({'cmdline':sys.argv,
-                'bastion':NODE_CONFIG['bastion-instance'],
+                'bastion':bastion,
                 'saltmaster':NODE_CONFIG['salt-master-instance']})
 
     keyfile = '%s.pem' % keyname
@@ -351,10 +357,12 @@ def create(template_data, cluster, flavor, keyname, no_config_check, branch):
         cf_parameters.append((parameter, PNDA_ENV['cloud_formation_parameters'][parameter]))
 
     if not no_config_check:
-        check_aws_connection()
-        check_keypair(keyname, keyfile)
-        check_package_server()
-        check_java_mirror()
+        check_config(keyname, keyfile)
+
+    save_cf_resources('create_%s' % MILLI_TIME(), cluster, cf_parameters, template_data)
+    if dry_run:
+        CONSOLE.info('Dry run mode completed')
+        sys.exit(0)
 
     CONSOLE.info('Creating Cloud Formation stack')
     conn = boto.cloudformation.connect_to_region(region)
@@ -375,42 +383,53 @@ def create(template_data, cluster, flavor, keyname, no_config_check, branch):
         sys.exit(1)
 
     instance_map = get_instance_map(cluster)
-    write_ssh_config(cluster, instance_map[cluster + '-' + NODE_CONFIG['bastion-instance']]['ip_address'],
+    bastion_ip = instance_map[cluster + '-' + bastion]['ip_address']
+
+    write_ssh_config(cluster, bastion_ip,
                      PNDA_ENV['ec2_access']['OS_USER'], os.path.abspath(keyfile))
     CONSOLE.debug('The PNDA console will come up on: http://%s', instance_map[cluster + '-' + NODE_CONFIG['console-instance']]['private_ip_address'])
 
+    attempts_per_host = 150
+    while attempts_per_host > 0:
+        try:
+            nc_ssh_cmd = 'ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s' % (keyfile,
+                                                                                                          PNDA_ENV['ec2_access']['OS_USER'], bastion_ip)
+            nc_install_cmd = nc_ssh_cmd.split(' ')
+            nc_install_cmd.append('sudo yum install -y nc || echo nc already installed')
+            ret_val = subprocess_to_log.call(nc_install_cmd, LOG, bastion_ip)
+            if ret_val != 0:
+                raise Exception("Error running ssh commands on host %s. See debug log (%s) for details." % (bastion_ip, LOG_FILE_NAME))
+            break
+        except:
+            CONSOLE.info('Still waiting for connectivity to bastion. See debug log (%s) for details.', LOG_FILE_NAME)
+            LOG.info(traceback.format_exc())
+            attempts_per_host -= 1
+            time.sleep(2)
+
+    wait_for_host_connectivity([instance_map[h]['private_ip_address'] for h in instance_map], cluster)
+
     CONSOLE.info('Bootstrapping saltmaster. Expect this to take a few minutes, check the debug log for progress (%s).', LOG_FILE_NAME)
     saltmaster = instance_map[cluster + '-' + NODE_CONFIG['salt-master-instance']]
-
+    saltmaster_ip = saltmaster['private_ip_address']
     platform_salt_tarball = None
     if 'PLATFORM_SALT_LOCAL' in PNDA_ENV['platform_salt']:
         local_salt_path = PNDA_ENV['platform_salt']['PLATFORM_SALT_LOCAL']
         platform_salt_tarball = '%s.tmp' % str(uuid.uuid1())
         with tarfile.open(platform_salt_tarball, mode='w:gz') as archive:
             archive.add(local_salt_path, arcname='platform-salt', recursive=True)
-        scp([platform_salt_tarball], cluster, saltmaster['private_ip_address'])
+        scp([platform_salt_tarball], cluster, saltmaster_ip)
         os.remove(platform_salt_tarball)
 
-    sm_script = 'bootstrap-scripts/%s/%s.sh' % (flavor, saltmaster['node_type'])
-    if not os.path.isfile(sm_script):
-        sm_script = 'bootstrap-scripts/%s.sh' % (saltmaster['node_type'])
-    scp([sm_script, 'cli/pnda_env_%s.sh' % cluster, 'git.pem'], cluster, saltmaster['private_ip_address'])
-    ssh(['source /tmp/pnda_env_%s.sh' % cluster,
-         'export PNDA_SALTMASTER_IP=%s' % saltmaster['private_ip_address'],
-         'export PNDA_CLUSTER=%s' % cluster,
-         'export PNDA_FLAVOR=%s' % flavor,
-         'export PLATFORM_GIT_BRANCH=%s' % branch,
-         'export PLATFORM_SALT_TARBALL=%s' % platform_salt_tarball if platform_salt_tarball is not None else ':',
-         'sudo chmod a+x /tmp/%s.sh' % saltmaster['node_type'],
-         '(sudo -E /tmp/%s.sh 2>&1) | tee -a pnda-bootstrap.log; %s' % (saltmaster['node_type'], THROW_BASH_ERROR)],
-        cluster, saltmaster['private_ip_address'])
-
-    CONSOLE.info('Bootstrapping other instances. Expect this to take a few minutes, check the debug log for progress (%s).', LOG_FILE_NAME)
     bootstrap_threads = []
     bootstrap_errors = Queue.Queue()
+    bootstrap(saltmaster, saltmaster_ip, cluster, flavor, branch, platform_salt_tarball, bootstrap_errors)
+    process_errors(bootstrap_errors)
+
+    CONSOLE.info('Bootstrapping other instances. Expect this to take a few minutes, check the debug log for progress (%s).', LOG_FILE_NAME)
     for key, instance in instance_map.iteritems():
         if '-' + NODE_CONFIG['salt-master-instance'] not in key:
-            thread = Thread(target=bootstrap, args=[instance, saltmaster['private_ip_address'], cluster, flavor, branch, bootstrap_errors])
+            thread = Thread(target=bootstrap, args=[instance, saltmaster_ip,
+                                                    cluster, flavor, branch, platform_salt_tarball, bootstrap_errors])
             bootstrap_threads.append(thread)
 
     for thread in bootstrap_threads:
@@ -420,26 +439,32 @@ def create(template_data, cluster, flavor, keyname, no_config_check, branch):
     for thread in bootstrap_threads:
         ret_val = thread.join()
 
-    while not bootstrap_errors.empty():
-        ret_val = bootstrap_errors.get()
-        raise Exception("Error bootstrapping host, error msg: %s. See debug log (%s) for details." % (ret_val, LOG_FILE_NAME))
+    process_errors(bootstrap_errors)
 
     time.sleep(30)
+
     CONSOLE.info('Running salt to install software. Expect this to take 45 minutes or more, check the debug log for progress (%s).', LOG_FILE_NAME)
     bastion = NODE_CONFIG['bastion-instance']
     ssh(['(sudo salt -v --log-level=debug --timeout=120 --state-output=mixed "*" state.highstate 2>&1) | tee -a pnda-salt.log; %s' % THROW_BASH_ERROR,
          '(sudo CLUSTER=%s salt-run --log-level=debug state.orchestrate orchestrate.pnda 2>&1) | tee -a pnda-salt.log; %s' % (cluster, THROW_BASH_ERROR),
-         '(sudo salt "*-%s" state.sls hostsfile 2>&1) | tee -a pnda-salt.log; %s' % (bastion, THROW_BASH_ERROR)],
-        cluster, saltmaster['private_ip_address'])
+         '(sudo salt "*-%s" state.sls hostsfile 2>&1) | tee -a pnda-salt.log; %s' % (bastion, THROW_BASH_ERROR)], cluster, saltmaster_ip)
     return instance_map[cluster + '-' + NODE_CONFIG['console-instance']]['private_ip_address']
 
-def expand(template_data, cluster, flavor, old_datanodes, old_kafka, keyname, branch):
+def expand(template_data, cluster, flavor, old_datanodes, old_kafka, keyname, no_config_check, dry_run, branch):
     keyfile = '%s.pem' % keyname
+
+    if not no_config_check:
+        check_config(keyname, keyfile)
 
     region = PNDA_ENV['ec2_access']['AWS_REGION']
     cf_parameters = [('keyName', keyname), ('pndaCluster', cluster)]
     for parameter in PNDA_ENV['cloud_formation_parameters']:
         cf_parameters.append((parameter, PNDA_ENV['cloud_formation_parameters'][parameter]))
+
+    save_cf_resources('expand_%s' % MILLI_TIME(), cluster, cf_parameters, template_data)
+    if dry_run:
+        CONSOLE.info('Dry run mode completed')
+        sys.exit(0)
 
     CONSOLE.info('Updating Cloud Formation stack')
     conn = boto.cloudformation.connect_to_region(region)
@@ -460,16 +485,21 @@ def expand(template_data, cluster, flavor, old_datanodes, old_kafka, keyname, br
         sys.exit(1)
 
     instance_map = get_instance_map(cluster)
-    write_ssh_config(cluster, instance_map[cluster + '-' + NODE_CONFIG['bastion-instance']]['ip_address'],
+    bastion = NODE_CONFIG['bastion-instance']
+    bastion_ip = instance_map[cluster + '-' + bastion]['ip_address']
+    write_ssh_config(cluster, bastion_ip,
                      PNDA_ENV['ec2_access']['OS_USER'], os.path.abspath(keyfile))
-    saltmaster = instance_map[cluster + '-' + NODE_CONFIG['salt-master-instance']]['private_ip_address']
+    saltmaster = instance_map[cluster + '-' + NODE_CONFIG['salt-master-instance']]
+    saltmaster_ip = saltmaster['private_ip_address']
 
+    wait_for_host_connectivity([instance_map[h]['private_ip_address'] for h in instance_map], cluster)
     CONSOLE.info('Bootstrapping new instances. Expect this to take a few minutes, check the debug log for progress. (%s)', LOG_FILE_NAME)
     bootstrap_threads = []
+    bootstrap_errors = Queue.Queue()
     for _, instance in instance_map.iteritems():
         if ((instance['node_type'] == 'cdh-dn' and int(instance['node_idx']) >= old_datanodes
              or instance['node_type'] == 'kafka' and int(instance['node_idx']) >= old_kafka)):
-            thread = Thread(target=bootstrap, args=[instance, saltmaster, cluster, flavor, branch])
+            thread = Thread(target=bootstrap, args=[instance, saltmaster_ip, cluster, flavor, branch, None, bootstrap_errors])
             bootstrap_threads.append(thread)
 
     for thread in bootstrap_threads:
@@ -478,17 +508,17 @@ def expand(template_data, cluster, flavor, old_datanodes, old_kafka, keyname, br
 
     for thread in bootstrap_threads:
         ret_val = thread.join()
-        if ret_val is not None:
-            raise Exception("Error bootstrapping host, error msg: %s. See debug log (%s) for details." % (ret_val, LOG_FILE_NAME))
+
+    while not bootstrap_errors.empty():
+        ret_val = bootstrap_errors.get()
+        raise Exception("Error bootstrapping host, error msg: %s. See debug log (%s) for details." % (ret_val, LOG_FILE_NAME))
 
     time.sleep(30)
 
     CONSOLE.info('Running salt to install software. Expect this to take 10 - 20 minutes, check the debug log for progress. (%s)', LOG_FILE_NAME)
-    bastion = NODE_CONFIG['bastion-instance']
     ssh(['(sudo salt -v --log-level=debug --timeout=120 --state-output=mixed "*" state.highstate 2>&1) | tee -a pnda-salt.log; %s' % THROW_BASH_ERROR,
          '(sudo CLUSTER=%s salt-run --log-level=debug state.orchestrate orchestrate.pnda-expand 2>&1) | tee -a pnda-salt.log; %s' % (cluster, THROW_BASH_ERROR),
-         '(sudo salt "*-%s" state.sls hostsfile 2>&1) | tee -a pnda-salt.log; %s' % (bastion, THROW_BASH_ERROR)],
-        cluster, saltmaster)
+         '(sudo salt "*-%s" state.sls hostsfile 2>&1) | tee -a pnda-salt.log; %s' % (bastion, THROW_BASH_ERROR)], cluster, saltmaster_ip)
     return instance_map[cluster + '-' + NODE_CONFIG['console-instance']]['private_ip_address']
 
 def destroy(cluster):
@@ -595,6 +625,10 @@ def get_args():
     parser.add_argument('-s', '--keyname', help='Keypair name')
     parser.add_argument('-x', '--no-config-check', action='store_true', help='Skip config verifiction checks')
     parser.add_argument('-b', '--branch', help='Branch of platform-salt to use. Overrides value in pnda_env.yaml')
+    parser.add_argument('-d', '--dry-run', action='store_true',
+                        help='Output the final Cloud Formation template but do not apply it. ' +
+                             'Useful for checking against the existing Cloud formation template to' +
+                             'gain confidence before running the expand operation.')
 
     args = parser.parse_args()
     return args
@@ -610,6 +644,7 @@ def main():
     flavor = args.flavour
     keyname = args.keyname
     no_config_check = args.no_config_check
+    dry_run = args.dry_run
 
     if not os.path.basename(os.getcwd()) == "cli":
         print 'Please run from inside the /cli directory'
@@ -631,12 +666,12 @@ def main():
         print '  AWS_SECRET_ACCESS_KEY = %s' % PNDA_ENV['ec2_access']['AWS_SECRET_ACCESS_KEY']
 
     # read ES cluster setup from yaml
-    esMasterNodes = PNDA_ENV['elk-cluster']['MASTER_NODES']
-    esDataNodes = PNDA_ENV['elk-cluster']['DATA_NODES']
-    esIngestNodes = PNDA_ENV['elk-cluster']['INGEST_NODES']
-    esCoordinatorNodes = PNDA_ENV['elk-cluster']['COORDINATING_NODES']
-    esMultiNodes = PNDA_ENV['elk-cluster']['MULTI_ROLE_NODES']
-    logstashNodes = PNDA_ENV['elk-cluster']['LOGSTASH_NODES']
+    es_master_nodes = PNDA_ENV['elk-cluster']['MASTER_NODES']
+    es_data_nodes = PNDA_ENV['elk-cluster']['DATA_NODES']
+    es_ingest_nodes = PNDA_ENV['elk-cluster']['INGEST_NODES']
+    es_coordinator_nodes = PNDA_ENV['elk-cluster']['COORDINATING_NODES']
+    es_multi_nodes = PNDA_ENV['elk-cluster']['MULTI_ROLE_NODES']
+    logstash_nodes = PNDA_ENV['elk-cluster']['LOGSTASH_NODES']
 
     # Branch defaults to master
     # but may be overridden by pnda_env.yaml
@@ -650,7 +685,10 @@ def main():
     if not os.path.isfile('git.pem'):
         with open('git.pem', 'w') as git_key_file:
             git_key_file.write('If authenticated access to the platform-salt git repository is required then' +
-                               ' replace this file with a key that grants access to the git server.\n')
+                               ' replace this file with a key that grants access to the git server.\n\n' +
+                               'Set PLATFORM_GIT_REPO_HOST and PLATFORM_GIT_REPO_URI in pnda_env.yaml, for example:\n' +
+                               'PLATFORM_GIT_REPO_HOST: github.com\n' +
+                               'PLATFORM_GIT_REPO_URI: git@github.com:pndaproject/platform-salt.git\n')
 
     if args.command == 'destroy':
         if pnda_cluster is not None:
@@ -715,9 +753,9 @@ def main():
                 print "Increasing the number of kafkanodes from %s to %s" % (node_counts['kafka'], kafkanodes)
 
             template_data = generate_template_file(flavor, datanodes, node_counts['opentsdb'], kafkanodes, node_counts['zk'],
-                                                   esMasterNodes, esIngestNodes, esDataNodes, esCoordinatorNodes,
-                                                   esMultiNodes, logstashNodes)
-            expand(template_data, pnda_cluster, flavor, node_counts['cdh-dn'], node_counts['kafka'], keyname, branch)
+                                                   es_master_nodes, es_ingest_nodes, es_data_nodes, es_coordinator_nodes,
+                                                   es_multi_nodes, logstash_nodes)
+            expand(template_data, pnda_cluster, flavor, node_counts['cdh-dn'], node_counts['kafka'], keyname, no_config_check, dry_run, branch)
             sys.exit(0)
         else:
             print 'expand command must specify pnda_cluster, e.g.\npnda-cli.py expand -e squirrel-land -f standard -s keyname -n 5'
@@ -779,35 +817,35 @@ def main():
         kafkanodes = 0
     if zknodes is None:
         zknodes = 0
-    if esMasterNodes is None:
-        esMasterNodes = 0
-    if esDataNodes is None:
-        esDataNodes = 0
-    if esIngestNodes is None:
-        esIngestNodes = 0
-    if esCoordinatorNodes is None:
-        esCoordinatorNodes = 0
-    if esMultiNodes is None:
-        esMultiNodes = 0
-    if logstashNodes is None:
-        logstashNodes = 0
+    if es_master_nodes is None:
+        es_master_nodes = 0
+    if es_data_nodes is None:
+        es_data_nodes = 0
+    if es_ingest_nodes is None:
+        es_ingest_nodes = 0
+    if es_coordinator_nodes is None:
+        es_coordinator_nodes = 0
+    if es_multi_nodes is None:
+        es_multi_nodes = 0
+    if logstash_nodes is None:
+        logstash_nodes = 0
 
     node_limit("datanodes", datanodes)
     node_limit("opentsdb-nodes", tsdbnodes)
     node_limit("kafka-nodes", kafkanodes)
     node_limit("zk-nodes", zknodes)
-    node_limit("elk-es-master", esMasterNodes)
-    node_limit("elk-es-data", esDataNodes)
-    node_limit("elk-es-ingest", esIngestNodes)
-    node_limit("elk-es-coordinator", esCoordinatorNodes)
-    node_limit("elk-es-multi", esMultiNodes)
-    node_limit("elk-logstash", logstashNodes)
+    node_limit("elk-es-master", es_master_nodes)
+    node_limit("elk-es-data", es_data_nodes)
+    node_limit("elk-es-ingest", es_ingest_nodes)
+    node_limit("elk-es-coordinator", es_coordinator_nodes)
+    node_limit("elk-es-multi", es_multi_nodes)
+    node_limit("elk-logstash", logstash_nodes)
 
     template_data = generate_template_file(flavor, datanodes, tsdbnodes, kafkanodes, zknodes,
-                                           esMasterNodes, esIngestNodes, esDataNodes, esCoordinatorNodes,
-                                           esMultiNodes, logstashNodes)
+                                           es_master_nodes, es_ingest_nodes, es_data_nodes, es_coordinator_nodes,
+                                           es_multi_nodes, logstash_nodes)
 
-    console_dns = create(template_data, pnda_cluster, flavor, keyname, no_config_check, branch)
+    console_dns = create(template_data, pnda_cluster, flavor, keyname, no_config_check, dry_run, branch)
     CONSOLE.info('Use the PNDA console to get started: http://%s', console_dns)
     CONSOLE.info(' Access hints:')
     CONSOLE.info('  - The script ./socks_proxy-%s opens an SSH tunnel to the PNDA cluster listening on a port bound to localhost', pnda_cluster)
