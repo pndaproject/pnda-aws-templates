@@ -63,7 +63,7 @@ By following the detailed guide below you can install PNDA onto a set of pre-exi
     cli/pnda-cli.py -e pnda -s mykey -f pico -m 'existing-machines/my-pico.json' create
     cli/pnda-cli.py -e pnda -s mykey -f standard -m 'existing-machines/my-standard.json' create
     ```
-14. Run pnda-cli to add new nodes to PNDA:
+14. (Optional) Run pnda-cli to add new nodes to PNDA:
 
     ```sh
     cli/pnda-cli.py -e pnda -s mykey -f pico -m 'existing-machines/my-pico.json' expand
