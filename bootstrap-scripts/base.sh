@@ -52,6 +52,9 @@ mount -a
 # Set the master address the minion will register itself with
 cat > /etc/salt/minion <<EOF
 master: $PNDA_SALTMASTER_IP
+beacons:
+  kernel_reboot_required:
+    interval: $PLATFORM_SALT_BEACON_TIMEOUT
 EOF
 
 # Set the grains common to all minions
