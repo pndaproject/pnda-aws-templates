@@ -411,10 +411,10 @@ def create(template_data, cluster, flavor, keyname, no_config_check, dry_run, br
             if len(stacks) > 0:
                 stack_status = stacks[0].stack_status
 
-    if stack_status != 'CREATE_COMPLETE':
-        CONSOLE.error('Stack did not come up, status is: ' + stack_status)
-        sys.exit(1)
-
+        if stack_status != 'CREATE_COMPLETE':
+            CONSOLE.error('Stack did not come up, status is: ' + stack_status)
+            sys.exit(1)
+				
     instance_map = get_instance_map(cluster, existing_machines_def_file)
 
     bastion_ip = instance_map[cluster + '-' + bastion]['ip_address']
