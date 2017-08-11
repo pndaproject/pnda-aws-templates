@@ -190,7 +190,7 @@ def ssh(cmds, cluster, host):
     if ret_val != 0:
         raise Exception("Error running ssh commands on host %s. See debug log (%s) for details." % (host, LOG_FILE_NAME))
 
-def bootstrap(instance, saltmaster, cluster, flavor, branch, salt_tarball, error_queue):
+def bootstrap(instance, saltmaster, cluster, flavor, branch, salt_tarball, error_queue,beacon_timeout):
     ret_val = None
     try:
         ip_address = instance['private_ip_address']
@@ -205,6 +205,7 @@ def bootstrap(instance, saltmaster, cluster, flavor, branch, salt_tarball, error
                        'export PNDA_SALTMASTER_IP=%s' % saltmaster,
                        'export PNDA_CLUSTER=%s' % cluster,
                        'export PNDA_FLAVOR=%s' % flavor,
+                       'export PLATFORM_SALT_BEACON_TIMEOUT=%s' % beacon_timeout,
                        'export PLATFORM_GIT_BRANCH=%s' % branch,
                        'export PLATFORM_SALT_TARBALL=%s' % salt_tarball if salt_tarball is not None else ':',
                        'sudo chmod a+x /tmp/package-install.sh',
@@ -420,16 +421,20 @@ def create(template_data, cluster, flavor, keyname, no_config_check, dry_run, br
         scp([platform_salt_tarball], cluster, saltmaster_ip)
         os.remove(platform_salt_tarball)
 
+    beacon_timeout = 30
+    if 'PLATFORM_SALT_BEACON_TIMEOUT' in PNDA_ENV['platform_salt']:
+        beacon_timeout = PNDA_ENV['platform_salt']['PLATFORM_SALT_BEACON_TIMEOUT']
+
     bootstrap_threads = []
     bootstrap_errors = Queue.Queue()
-    bootstrap(saltmaster, saltmaster_ip, cluster, flavor, branch, platform_salt_tarball, bootstrap_errors)
+    bootstrap(saltmaster, saltmaster_ip, cluster, flavor, branch, platform_salt_tarball, bootstrap_errors,beacon_timeout)
     process_errors(bootstrap_errors)
 
     CONSOLE.info('Bootstrapping other instances. Expect this to take a few minutes, check the debug log for progress (%s).', LOG_FILE_NAME)
     for key, instance in instance_map.iteritems():
         if '-' + NODE_CONFIG['salt-master-instance'] not in key:
             thread = Thread(target=bootstrap, args=[instance, saltmaster_ip,
-                                                    cluster, flavor, branch, platform_salt_tarball, bootstrap_errors])
+                                                    cluster, flavor, branch, platform_salt_tarball, bootstrap_errors,beacon_timeout])
             bootstrap_threads.append(thread)
 
     for thread in bootstrap_threads:
@@ -448,6 +453,8 @@ def create(template_data, cluster, flavor, keyname, no_config_check, dry_run, br
     ssh(['(sudo salt -v --log-level=debug --timeout=120 --state-output=mixed "*" state.highstate 2>&1) | tee -a pnda-salt.log; %s' % THROW_BASH_ERROR,
          '(sudo CLUSTER=%s salt-run --log-level=debug state.orchestrate orchestrate.pnda 2>&1) | tee -a pnda-salt.log; %s' % (cluster, THROW_BASH_ERROR),
          '(sudo salt "*-%s" state.sls hostsfile 2>&1) | tee -a pnda-salt.log; %s' % (bastion, THROW_BASH_ERROR)], cluster, saltmaster_ip)
+    ssh(['(sudo salt -v --log-level=debug --state-output=mixed "*" state.sls reboot.kernel_upgrade 2>&1) | tee -a pnda-salt.log'], cluster, saltmaster_ip)
+
     return instance_map[cluster + '-' + NODE_CONFIG['console-instance']]['private_ip_address']
 
 def expand(template_data, cluster, flavor, old_datanodes, old_kafka, keyname, no_config_check, dry_run, branch):
@@ -455,6 +462,10 @@ def expand(template_data, cluster, flavor, old_datanodes, old_kafka, keyname, no
 
     if not no_config_check:
         check_config(keyname, keyfile)
+
+    beacon_timeout = 30
+    if 'PLATFORM_SALT_BEACON_TIMEOUT' in PNDA_ENV['platform_salt']:
+        beacon_timeout = PNDA_ENV['platform_salt']['PLATFORM_SALT_BEACON_TIMEOUT']
 
     region = PNDA_ENV['ec2_access']['AWS_REGION']
     cf_parameters = [('keyName', keyname), ('pndaCluster', cluster)]
@@ -499,7 +510,7 @@ def expand(template_data, cluster, flavor, old_datanodes, old_kafka, keyname, no
     for _, instance in instance_map.iteritems():
         if ((instance['node_type'] == 'hadoop-dn' and int(instance['node_idx']) >= old_datanodes
              or instance['node_type'] == 'kafka' and int(instance['node_idx']) >= old_kafka)):
-            thread = Thread(target=bootstrap, args=[instance, saltmaster_ip, cluster, flavor, branch, None, bootstrap_errors])
+            thread = Thread(target=bootstrap, args=[instance, saltmaster_ip, cluster, flavor, branch, None, bootstrap_errors,beacon_timeout])
             bootstrap_threads.append(thread)
 
     for thread in bootstrap_threads:
@@ -519,6 +530,7 @@ def expand(template_data, cluster, flavor, old_datanodes, old_kafka, keyname, no
     ssh(['(sudo salt -v --log-level=debug --timeout=120 --state-output=mixed "*" state.highstate 2>&1) | tee -a pnda-salt.log; %s' % THROW_BASH_ERROR,
          '(sudo CLUSTER=%s salt-run --log-level=debug state.orchestrate orchestrate.pnda-expand 2>&1) | tee -a pnda-salt.log; %s' % (cluster, THROW_BASH_ERROR),
          '(sudo salt "*-%s" state.sls hostsfile 2>&1) | tee -a pnda-salt.log; %s' % (bastion, THROW_BASH_ERROR)], cluster, saltmaster_ip)
+    ssh(['(sudo salt -v --log-level=debug --state-output=mixed "*" state.sls reboot.kernel_upgrade 2>&1) | tee -a pnda-salt.log'], cluster, saltmaster_ip)
     return instance_map[cluster + '-' + NODE_CONFIG['console-instance']]['private_ip_address']
 
 def destroy(cluster):
