@@ -389,14 +389,14 @@ def create(template_data, cluster, flavor, keyname, no_config_check, dry_run, br
             check_package_server()
             check_java_mirror()
 
-    		if not no_config_check:
-        		check_config(keyname, keyfile)
+        if not no_config_check:
+            check_config(keyname, keyfile)
 
-    		save_cf_resources('create_%s' % MILLI_TIME(), cluster, cf_parameters, template_data)
-    		if dry_run:
-        		CONSOLE.info('Dry run mode completed')
-        		sys.exit(0)
-            
+        save_cf_resources('create_%s' % MILLI_TIME(), cluster, cf_parameters, template_data)
+        if dry_run:
+            CONSOLE.info('Dry run mode completed')
+            sys.exit(0)
+
         CONSOLE.info('Creating Cloud Formation stack')
         conn = boto.cloudformation.connect_to_region(region)
         stack_status = 'CREATING'
@@ -414,7 +414,7 @@ def create(template_data, cluster, flavor, keyname, no_config_check, dry_run, br
         if stack_status != 'CREATE_COMPLETE':
             CONSOLE.error('Stack did not come up, status is: ' + stack_status)
             sys.exit(1)
-				
+
     instance_map = get_instance_map(cluster, existing_machines_def_file)
 
     bastion_ip = instance_map[cluster + '-' + bastion]['ip_address']
@@ -704,7 +704,7 @@ def main():
         if existing_machines_def_file is not None:
             CONSOLE.info('Installing to pre-existing machines, defined in %s', existing_machines_def_file)
             node_counts = get_current_node_counts(pnda_cluster, existing_machines_def_file)
-            datanodes = node_counts['cdh-dn']
+            datanodes = node_counts['hadoop-dn']
             tsdbnodes = node_counts['opentsdb']
             kafkanodes = node_counts['kafka']
             zknodes = node_counts['zk']
