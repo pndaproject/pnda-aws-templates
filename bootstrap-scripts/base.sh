@@ -14,7 +14,7 @@ DISTRO=$(cat /etc/*-release|grep ^ID\=|awk -F\= {'print $2'}|sed s/\"//g)
 if [ "x$DISTRO" == "xubuntu" ]; then
 export DEBIAN_FRONTEND=noninteractive
 apt-get -y install xfsprogs salt-minion=2015.8.11+ds-1
-elif [ "x$DISTRO" == "xrhel" ]; then
+elif [ "x$DISTRO" == "xrhel" -o "x$DISTRO" == "xcentos" ]; then
 yum -y install xfsprogs wget salt-minion-2015.8.11-1.el7
 #enable boot time startup
 systemctl enable salt-minion.service
@@ -63,7 +63,8 @@ pnda:
 pnda_cluster: $PNDA_CLUSTER 
 EOF
 
-if [ "x$DISTRO" == "xrhel" ]; then
+if [ "x$DISTRO" == "xrhel" -o "x$DISTRO" == "xcentos" ]; then
+    mkdir -p /etc/cloud
 cat >> /etc/cloud/cloud.cfg <<EOF
 preserve_hostname: true
 EOF

@@ -17,7 +17,7 @@ apt-get -y install unzip salt-master=2015.8.11+ds-1 git
 HDP_OS=ubuntu14
 fi
 
-if [ "x$DISTRO" == "xrhel" ]; then
+if [ "x$DISTRO" == "xrhel" -o "x$DISTRO" == "xcentos" ]; then
 yum -y install unzip salt-master-2015.8.11-1.el7 git
 #Enable init mode , RHEL not enabled salt-minion by default
 systemctl enable salt-master.service

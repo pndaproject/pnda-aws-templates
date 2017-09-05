@@ -44,7 +44,7 @@ if [ "x$ADD_ONLINE_REPOS" == "xYES" ]; then
 fi
   apt-get update
 
-elif [ "x$DISTRO" == "xrhel" ]; then
+elif [ "x$DISTRO" == "xrhel" -o "x$DISTRO" == "xcentos" ]; then
 
 if [ "x$ADD_ONLINE_REPOS" == "xYES" ]; then
   RPM_EXTRAS=rhui-REGION-rhel-server-extras
@@ -89,4 +89,3 @@ cat << EOF >> /root/.pydistutils.cfg
 find_links=https://pypi.python.org/simple/
 EOF
 fi
-
