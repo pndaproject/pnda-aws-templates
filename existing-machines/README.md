@@ -44,7 +44,7 @@ By following the detailed guide below you can install PNDA onto a set of pre-exi
         ```
 4. Copy `pnda_env_example.yaml` to create `pnda_env.yaml`
 5. Edit `pnda_env.yaml` with `ec2_access: OS_USER: <username>`
-6. Edit `pnda_env.yaml` with `pnda_application_repo: PR_FS_TYPE: fs`
+6. Edit `pnda_env.yaml` with `pnda_application_repo: PR_FS_TYPE: local`
 7. (Optional) Edit `pnda_env.yaml` with `ntp: NTP_SERVERS: my.ntp.server` if internet based NTP servers are not reachable from your environment.
 8. (Optional) Fork the `platform-salt` repository or clone it locally to where the CLI is run from and do a search/replace for `eth0` if your network interfaces are not named `eth0`. Then edit `pnda_env.yaml` to point `platform_salt: PLATFORM_GIT_REPO_URI` at the fork, or `platform_salt: PLATFORM_SALT_LOCAL` at the path to the local clone of `platform-salt`.
 9. Create a [pnda mirror](https://github.com/pndaproject/pnda/tree/develop/mirror) and [build the PNDA binaries](https://github.com/pndaproject/pnda/tree/develop/build) and edit `pnda_env.yaml` with the address of it: `mirrors: PNDA_MIRROR: http://mirror_address`. Please use a clean, internet connected machine to build the mirror and the PNDA binaries. If the machine is not clean (meaning no additional deb or rpm packages have ever been added using apt-get/yum) the dependency calculations can be incorrect and the mirror will be missing packages, or will fail entirely.
