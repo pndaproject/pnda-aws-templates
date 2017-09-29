@@ -329,8 +329,8 @@ def process_errors(errors):
 
 def wait_for_host_connectivity(hosts, cluster):
     for host in hosts:
-        attempts_per_host = 150
-        while attempts_per_host > 0:
+        time_start = MILLI_TIME()
+        while True:
             try:
                 CONSOLE.info('Checking connectivity to %s', host)
                 ssh(['ls ~'], cluster, host)
@@ -338,7 +338,9 @@ def wait_for_host_connectivity(hosts, cluster):
             except:
                 CONSOLE.info('Still waiting for connectivity to %s. See debug log (%s) for details.', host, LOG_FILE_NAME)
                 LOG.info(traceback.format_exc())
-                attempts_per_host -= 1
+                if MILLI_TIME() - time_start > 5 * 60 * 1000:
+                    CONSOLE.error('Giving up waiting for host connectivity')
+                    sys.exit(-1)
                 time.sleep(2)
 
 def create(template_data, cluster, flavor, keyname, no_config_check, dry_run, branch):
