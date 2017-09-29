@@ -118,6 +118,7 @@ hadoop.distro: '$HADOOP_DISTRO'
 pnda_mirror:
   base_url: '$PNDA_MIRROR'
   misc_packages_path: /mirror_misc/
+  app_packages_path: /mirror_apps/
 
 cloudera:
   parcel_repo: '$PNDA_MIRROR/mirror_cloudera'
