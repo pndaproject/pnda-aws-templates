@@ -338,7 +338,7 @@ def wait_for_host_connectivity(hosts, cluster):
             except:
                 CONSOLE.info('Still waiting for connectivity to %s. See debug log (%s) for details.', host, LOG_FILE_NAME)
                 LOG.info(traceback.format_exc())
-                if MILLI_TIME() - time_start > 5 * 60 * 1000:
+                if MILLI_TIME() - time_start > 10 * 60 * 1000:
                     CONSOLE.error('Giving up waiting for host connectivity')
                     sys.exit(-1)
                 time.sleep(2)
@@ -355,7 +355,8 @@ def create(template_data, cluster, flavor, keyname, no_config_check, dry_run, br
     keyfile = '%s.pem' % keyname
 
     region = PNDA_ENV['ec2_access']['AWS_REGION']
-    cf_parameters = [('keyName', keyname), ('pndaCluster', cluster)]
+    awsAvailabilityZone = PNDA_ENV['ec2_access']['AWS_AVAILABILITY_ZONE']
+    cf_parameters = [('keyName', keyname), ('pndaCluster', cluster), ('awsAvailabilityZone', awsAvailabilityZone)]
     for parameter in PNDA_ENV['cloud_formation_parameters']:
         cf_parameters.append((parameter, PNDA_ENV['cloud_formation_parameters'][parameter]))
 

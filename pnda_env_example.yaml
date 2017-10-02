@@ -6,7 +6,8 @@ ec2_access:
 
   # AWS region to create PNDA ec2 instances in
   AWS_REGION: eu-west-1
-
+  AWS_AVAILABILITY_ZONE: eu-west-1a
+  
   # The user name to use when logging into the AWS ec2 instances
   # Ubuntu: ubuntu
   # Redhat: ec2-user

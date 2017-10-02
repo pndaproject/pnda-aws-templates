@@ -285,7 +285,7 @@
             "DeleteOnTermination": "true",
             "Description": "Secondary network interface",
             "DeviceIndex": 1,
-            "SubnetId": {"Ref": "PrivateSubnet"},
+            "SubnetId": {"Ref": "PublicProducerSubnet"},
             "GroupSet": [{"Ref": "pndaSg"}]
           }
         ]
