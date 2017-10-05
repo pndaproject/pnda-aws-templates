@@ -317,10 +317,13 @@ def write_ssh_config(cluster, bastion_ip, os_user, keyfile):
         config_file.write('    ProxyCommand ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s exec nc %%h %%p\n'
                           % (keyfile, os_user, bastion_ip))
 
-    with open('cli/socks_proxy-%s' % cluster, 'w') as config_file:
+    socks_file_path = 'cli/socks_proxy-%s' % cluster
+    with open(socks_file_path, 'w') as config_file:
         config_file.write('eval `ssh-agent`\n')
         config_file.write('ssh-add %s\n' % keyfile)
         config_file.write('ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -A -D 9999 %s@%s\n' % (keyfile, os_user, bastion_ip))
+    mode = os.stat(socks_file_path).st_mode
+    os.chmod(socks_file_path, mode | (mode & 292) >> 2)
 
 def process_errors(errors):
     while not errors.empty():
