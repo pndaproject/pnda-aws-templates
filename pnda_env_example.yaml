@@ -29,11 +29,21 @@ cloud_formation_parameters:
   # CIDR specifying the address range for the VPC
   vpcCidr: 10.0.0.0/16
 
-  # CIDR specifying the address range for the public subnet
+  # CIDR specifying the address range for the public subnet (bastion access)
   publicSubnetCidr: 10.0.0.0/24
 
-  # CIDR specifying the address range for the private subnet
+  # CIDR specifying the address range for the private subnet (PNDA)
   privateSubnetCidr: 10.0.1.0/24
+
+  # CIDR specifying the address range for the public producer subnet (Kafka ingress)
+  publicProducerSubnetCidr: 10.0.2.0/24
+
+  # Address of gateway for Kakfa interface on private subnet
+  privateSubnetGateway: 10.0.1.1
+
+  # Address of gateway for Kakfa interface on public producer subnet
+  publicProducerSubnetGateway: 10.0.2.1
+
 platform_salt:
   # Use either PLATFORM_GIT_REPO_URI + PLATFORM_GIT_BRANCH or PLATFORM_SALT_LOCAL
 
