@@ -61,6 +61,16 @@
       "Type" : "String",
       "Default" : "10.0.2.0/24",
       "Description" : "CIDR specifying the address range for the public subnet for producers"
+    },
+    "privateSubnetGateway" : {
+      "Type" : "String",
+      "Default" : "10.0.1.1",
+      "Description" : "Gateway on private subnet"
+    },
+    "publicProducerSubnetGateway" : {
+      "Type" : "String",
+      "Default" : "10.0.2.1",
+      "Description" : "Gateway on public subnet for producers"
     }
   },
   "Resources": {
@@ -388,6 +398,7 @@
     },
     "PublicProducerRoute" : {
       "Type" : "AWS::EC2::Route",
+      "DependsOn" : "GatewayToInternet",      
       "Properties" : {
         "RouteTableId" : { "Ref" : "PublicProducerRouteTable" },
         "DestinationCidrBlock" : "0.0.0.0/0",
