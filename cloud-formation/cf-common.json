@@ -7,10 +7,20 @@
       "Default" : "pnda",
       "Description" : "Name for this cluster"
     },
+    "awsAvailabilityZone" : {
+      "Type" : "String",
+      "Default" : "eu-west-1a",
+      "Description" : "Availability Zone for subnet"
+    },
     "whitelistSshAccess" : {
       "Type" : "String",
       "Default" : "0.0.0.0/0",
       "Description" : "Whitelist for external access to ssh"
+    },
+    "whitelistKafkaAccess" : {
+      "Type" : "String",
+      "Default" : "0.0.0.0/0",
+      "Description" : "Whitelist for external access to Kafka"
     },
     "imageId" : {
       "Type" : "String",
@@ -46,6 +56,21 @@
       "Type" : "String",
       "Default" : "10.0.1.0/24",
       "Description" : "CIDR specifying the address range for the private subnet"
+    },
+    "publicProducerSubnetCidr" : {
+      "Type" : "String",
+      "Default" : "10.0.2.0/24",
+      "Description" : "CIDR specifying the address range for the public subnet for producers"
+    },
+    "privateSubnetGateway" : {
+      "Type" : "String",
+      "Default" : "10.0.1.1",
+      "Description" : "Gateway on private subnet"
+    },
+    "publicProducerSubnetGateway" : {
+      "Type" : "String",
+      "Default" : "10.0.2.1",
+      "Description" : "Gateway on public subnet for producers"
     }
   },
   "Resources": {
@@ -67,6 +92,7 @@
       "Properties" : {
         "VpcId" : { "Ref" : "VPC" },
         "CidrBlock" : { "Ref" : "publicSubnetCidr" },
+        "AvailabilityZone" : {"Ref": "awsAvailabilityZone"},
         "Tags" : [
           { "Key" : "Application", "Value" : { "Ref" : "AWS::StackName" } },
           { "Key" : "Network", "Value" : "Public" }
@@ -132,6 +158,43 @@
       }
     },
 
+    "PublicProducerNetworkAcl" : {
+      "Type" : "AWS::EC2::NetworkAcl",
+      "Properties" : {
+        "VpcId" : { "Ref" : "VPC" },
+        "Tags" : [
+          { "Key" : "Application", "Value" : { "Ref" : "AWS::StackName" } },
+          { "Key" : "Network", "Value" : "PublicProducer" }
+        ]
+      }
+    },
+
+    "InboundProducerSSHPublicNetworkAclEntry" : {
+      "Type" : "AWS::EC2::NetworkAclEntry",
+      "Properties" : {
+        "NetworkAclId" : { "Ref" : "PublicProducerNetworkAcl" },
+        "RuleNumber" : "101",
+        "Protocol" : "6",
+        "RuleAction" : "allow",
+        "Egress" : "false",
+        "CidrBlock" : "0.0.0.0/0",
+        "PortRange" : { "From" : "22", "To" : "22" }
+      }
+    },
+    
+    "InboundKafkaPublicNetworkAclEntry" : {
+      "Type" : "AWS::EC2::NetworkAclEntry",
+      "Properties" : {
+        "NetworkAclId" : { "Ref" : "PublicProducerNetworkAcl" },
+        "RuleNumber" : "100",
+        "Protocol" : "6",
+        "RuleAction" : "allow",
+        "Egress" : "false",
+        "CidrBlock" : "0.0.0.0/0",
+        "PortRange" : { "From" : "9090", "To" : "9100" }
+      }
+    },
+    
     "InboundHTTPPublicNetworkAclEntry" : {
       "Type" : "AWS::EC2::NetworkAclEntry",
       "Properties" : {
@@ -210,6 +273,19 @@
       }
     },
 
+    "OutboundPublicProducerNetworkAclEntry" : {
+      "Type" : "AWS::EC2::NetworkAclEntry",
+      "Properties" : {
+        "NetworkAclId" : { "Ref" : "PublicProducerNetworkAcl" },
+        "RuleNumber" : "100",
+        "Protocol" : "6",
+        "RuleAction" : "allow",
+        "Egress" : "true",
+        "CidrBlock" : "0.0.0.0/0",
+        "PortRange" : { "From" : "0", "To" : "65535" }
+      }
+    },
+    
     "OutboundPublicNetworkAclEntry" : {
       "Type" : "AWS::EC2::NetworkAclEntry",
       "Properties" : {
@@ -249,6 +325,7 @@
       "Properties" : {
         "VpcId" : { "Ref" : "VPC" },
         "CidrBlock" : { "Ref" : "privateSubnetCidr" },
+        "AvailabilityZone" : {"Ref": "awsAvailabilityZone"},
         "Tags" : [
           { "Key" : "Application", "Value" : { "Ref" : "AWS::StackName" } },
           { "Key" : "Network", "Value" : "Private" }
@@ -269,6 +346,7 @@
         "Domain" : "vpc"
       }
     },
+
     "PrivateRouteTable" : {
       "Type" : "AWS::EC2::RouteTable",
       "Properties" : {
@@ -294,6 +372,75 @@
             "RouteTableId" : { "Ref" : "PrivateRouteTable" }
          }
     },
+
+     "PublicProducerSubnet" : {
+      "Type" : "AWS::EC2::Subnet",
+      "Properties" : {
+        "VpcId" : { "Ref" : "VPC" },
+        "CidrBlock" : { "Ref" : "publicProducerSubnetCidr" },
+        "AvailabilityZone" : {"Ref": "awsAvailabilityZone"},
+        "Tags" : [
+          { "Key" : "Application", "Value" : { "Ref" : "AWS::StackName" } },
+          { "Key" : "Network", "Value" : "Public" }
+        ]
+      }
+    },
+    
+    "PublicProducerRouteTable" : {
+      "Type" : "AWS::EC2::RouteTable",
+      "Properties" : {
+        "VpcId" : { "Ref" : "VPC" },
+        "Tags" : [
+          { "Key" : "Application", "Value" : { "Ref" : "AWS::StackName" } },
+          { "Key" : "Network", "Value" : "PublicProducer" }
+        ]
+      }
+    },
+    "PublicProducerRoute" : {
+      "Type" : "AWS::EC2::Route",
+      "DependsOn" : "GatewayToInternet",      
+      "Properties" : {
+        "RouteTableId" : { "Ref" : "PublicProducerRouteTable" },
+        "DestinationCidrBlock" : "0.0.0.0/0",
+        "GatewayId" : { "Ref" : "InternetGateway" }
+      }
+    },
+
+    "PublicProducerSubnetRouteTableAssociation" : {
+         "Type" : "AWS::EC2::SubnetRouteTableAssociation",
+         "Properties" : {
+            "SubnetId" : { "Ref" : "PublicProducerSubnet" },
+            "RouteTableId" : { "Ref" : "PublicProducerRouteTable" }
+         }
+    },
+
+    "PublicProducerSubnetNetworkAclAssociation" : {
+      "Type" : "AWS::EC2::SubnetNetworkAclAssociation",
+      "Properties" : {
+        "SubnetId" : { "Ref" : "PublicProducerSubnet" },
+        "NetworkAclId" : { "Ref" : "PublicProducerNetworkAcl" }
+      }
+    },
+    "kafkaSg": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "access to Kafka",
+        "VpcId": {"Ref": "VPC"}
+      }
+    },
+   "ingressKafka1": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "GroupId": {
+          "Ref": "kafkaSg"
+        },
+        "IpProtocol": "tcp",
+        "FromPort": "9090",
+        "ToPort": "9100",
+        "CidrIp": { "Ref" : "whitelistKafkaAccess" }
+      }
+    },
+    
     "sshSg": {
       "Type": "AWS::EC2::SecurityGroup",
       "Properties": {

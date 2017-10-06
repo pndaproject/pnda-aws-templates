@@ -138,12 +138,28 @@
             "DeleteOnTermination": "true",
             "Description": "Secondary network interface",
             "DeviceIndex": 1,
-            "SubnetId": {"Ref": "PrivateSubnet"},
-            "GroupSet": [{"Ref": "pndaSg"}]
+            "SubnetId": {"Ref": "PublicProducerSubnet"},
+            "GroupSet": [{"Ref": "pndaSg"},{"Ref": "kafkaSg"}]
           }
-        ]
+        ],
+        "UserData" : { "Fn::Base64" : { "Fn::Join" : ["\n", [
+            "#!/bin/bash -v",
+            "cat > /etc/network/interfaces <<EOF",
+            "auto eth0",
+            "iface eth0 inet dhcp",
+            { "Fn::Sub": "post-up ip route add default via ${privateSubnetGateway} dev eth0 tab 1" },            
+            { "Fn::Sub": "post-up ip rule add from ${privateSubnetCidr} tab 1" },            
+            "auto eth1",
+            "iface eth1 inet dhcp",
+            { "Fn::Sub": "post-up ip route add default via ${publicProducerSubnetGateway} dev eth1 tab 2" },            
+            { "Fn::Sub": "post-up ip rule add from ${publicProducerSubnetCidr} tab 2" },            
+            "EOF",
+            "ifdown eth0; ifup eth0",
+            "ifdown eth1; ifup eth1"
+        ]]}}
       }
     },
+    
     "instanceCdhDn": {
       "Type": "AWS::EC2::Instance",
       "Properties": {

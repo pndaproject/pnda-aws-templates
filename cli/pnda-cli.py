@@ -317,7 +317,8 @@ def write_ssh_config(cluster, bastion_ip, os_user, keyfile):
         config_file.write('    ProxyCommand ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s exec nc %%h %%p\n'
                           % (keyfile, os_user, bastion_ip))
 
-    with open('cli/socks_proxy-%s' % cluster, 'w') as config_file:
+    socks_file_path = 'cli/socks_proxy-%s' % cluster
+    with open(socks_file_path, 'w') as config_file:
         config_file.write('''
 unset SSH_AUTH_SOCK
 unset SSH_AGENT_PID
@@ -348,6 +349,8 @@ fi\n''')
         config_file.write('eval `ssh-agent`\n')
         config_file.write('ssh-add %s\n' % keyfile)
         config_file.write('ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -A -D 9999 %s@%s\n' % (keyfile, os_user, bastion_ip))
+    mode = os.stat(socks_file_path).st_mode
+    os.chmod(socks_file_path, mode | (mode & 292) >> 2)
 
 def process_errors(errors):
     while not errors.empty():
@@ -365,7 +368,7 @@ def wait_for_host_connectivity(hosts, cluster):
             except:
                 CONSOLE.info('Still waiting for connectivity to %s. See debug log (%s) for details.', host, LOG_FILE_NAME)
                 LOG.info(traceback.format_exc())
-                if MILLI_TIME() - time_start > 5 * 60 * 1000:
+                if MILLI_TIME() - time_start > 10 * 60 * 1000:
                     CONSOLE.error('Giving up waiting for host connectivity')
                     sys.exit(-1)
                 time.sleep(2)
@@ -382,7 +385,8 @@ def create(template_data, cluster, flavor, keyname, no_config_check, dry_run, br
     keyfile = '%s.pem' % keyname
 
     region = PNDA_ENV['ec2_access']['AWS_REGION']
-    cf_parameters = [('keyName', keyname), ('pndaCluster', cluster)]
+    awsAvailabilityZone = PNDA_ENV['ec2_access']['AWS_AVAILABILITY_ZONE']
+    cf_parameters = [('keyName', keyname), ('pndaCluster', cluster), ('awsAvailabilityZone', awsAvailabilityZone)]
     for parameter in PNDA_ENV['cloud_formation_parameters']:
         cf_parameters.append((parameter, PNDA_ENV['cloud_formation_parameters'][parameter]))
 
@@ -478,7 +482,7 @@ def create(template_data, cluster, flavor, keyname, no_config_check, dry_run, br
     ssh(['(sudo salt -v --log-level=debug --timeout=120 --state-output=mixed "*" state.highstate queue=True 2>&1) | tee -a pnda-salt.log; %s' % THROW_BASH_ERROR,
          '(sudo CLUSTER=%s salt-run --log-level=debug state.orchestrate orchestrate.pnda 2>&1) | tee -a pnda-salt.log; %s' % (cluster, THROW_BASH_ERROR),
          '(sudo salt "*-%s" state.sls hostsfile 2>&1) | tee -a pnda-salt.log; %s' % (bastion, THROW_BASH_ERROR)], cluster, saltmaster_ip)
-    CONSOLE.info("Nodes may reboot due to kernel upgrade, wait for few minutes")
+    CONSOLE.info("Waiting for instances to reboot following kernel upgrade. Expect this to take a few minutes.")
     time.sleep(60)
     wait_for_host_connectivity([instance_map[h]['private_ip_address'] for h in instance_map], cluster)
     
