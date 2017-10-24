@@ -28,6 +28,7 @@ import atexit
 import traceback
 import datetime
 import tarfile
+import ssl
 import Queue
 from threading import Thread
 
@@ -65,6 +66,16 @@ THROW_BASH_ERROR = "cmd_result=${PIPESTATUS[0]} && if [ ${cmd_result} != '0' ]; 
 RUNFILE = None
 
 MILLI_TIME = lambda: int(round(time.time() * 1000))
+
+def retry(fn, *args, **kwargs):
+    ret = None
+    for retry_count in xrange(3):
+        try:
+            ret = fn(*args, **kwargs)
+            break
+        except ssl.SSLError, exception:
+            pass
+    return ret
 
 def init_runfile(cluster):
     global RUNFILE
@@ -147,7 +158,7 @@ def get_instance_map(cluster):
     CONSOLE.debug('Checking details of created instances')
     region = PNDA_ENV['ec2_access']['AWS_REGION']
     ec2 = boto.ec2.connect_to_region(region)
-    reservations = ec2.get_all_reservations()
+    reservations = retry(ec2.get_all_reservations)
     instance_map = {}
     for reservation in reservations:
         for instance in reservation.instances:
@@ -401,14 +412,14 @@ def create(template_data, cluster, flavor, keyname, no_config_check, dry_run, br
     CONSOLE.info('Creating Cloud Formation stack')
     conn = boto.cloudformation.connect_to_region(region)
     stack_status = 'CREATING'
-    conn.create_stack(cluster,
-                      template_body=template_data,
-                      parameters=cf_parameters)
+    retry(conn.create_stack, cluster,
+          template_body=template_data,
+          parameters=cf_parameters)
 
     while stack_status in ['CREATE_IN_PROGRESS', 'CREATING']:
         time.sleep(5)
         CONSOLE.info('Stack is: ' + stack_status)
-        stacks = conn.describe_stacks(cluster)
+        stacks = retry(conn.describe_stacks, cluster)
         if len(stacks) > 0:
             stack_status = stacks[0].stack_status
 
@@ -507,14 +518,14 @@ def expand(template_data, cluster, flavor, old_datanodes, old_kafka, include_orc
     CONSOLE.info('Updating Cloud Formation stack')
     conn = boto.cloudformation.connect_to_region(region)
     stack_status = 'UPDATING'
-    conn.update_stack(cluster,
-                      template_body=template_data,
-                      parameters=cf_parameters)
+    retry(conn.update_stack, cluster,
+          template_body=template_data,
+          parameters=cf_parameters)
 
     while stack_status in ['UPDATE_IN_PROGRESS', 'UPDATING', 'UPDATE_COMPLETE_CLEANUP_IN_PROGRESS']:
         time.sleep(5)
         CONSOLE.info('Stack is: ' + stack_status)
-        stacks = conn.describe_stacks(cluster)
+        stacks = retry(conn.describe_stacks, cluster)
         if len(stacks) > 0:
             stack_status = stacks[0].stack_status
 
@@ -587,12 +598,12 @@ def destroy(cluster):
     conn = boto.cloudformation.connect_to_region(region)
 
     stack_status = 'DELETING'
-    conn.delete_stack(cluster)
+    retry(conn.delete_stack, cluster)
     while stack_status in ['DELETE_IN_PROGRESS', 'DELETING']:
         time.sleep(5)
         CONSOLE.info('Stack is: ' + stack_status)
         try:
-            stacks = conn.describe_stacks(cluster)
+            stacks = retry(conn.describe_stacks, cluster)
         except:
             stacks = []
 
