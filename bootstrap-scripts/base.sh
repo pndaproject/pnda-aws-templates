@@ -54,13 +54,6 @@ cat > /etc/salt/minion <<EOF
 master: $PNDA_SALTMASTER_IP
 EOF
 
-cat >> /etc/salt/minion.d/beacons.conf <<EOF
-beacons:
-  kernel_reboot_required:
-    interval: $PLATFORM_SALT_BEACON_TIMEOUT
-    disable_during_state_run: True
-EOF
-
 # Set the grains common to all minions
 cat >> /etc/salt/grains <<EOF
 pnda:

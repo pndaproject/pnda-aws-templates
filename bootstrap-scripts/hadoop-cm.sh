@@ -28,11 +28,6 @@ EOF
 cat >> /etc/salt/minion <<EOF
 id: $PNDA_CLUSTER-hadoop-cm
 EOF
-cat >> /etc/salt/minion.d/beacons.conf <<EOF
-  service_restart:
-    interval: $PLATFORM_SALT_BEACON_TIMEOUT
-    disable_during_state_run: True
-EOF
 
 echo $PNDA_CLUSTER-hadoop-cm > /etc/hostname
 hostname $PNDA_CLUSTER-hadoop-cm

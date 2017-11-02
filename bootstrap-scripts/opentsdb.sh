@@ -28,11 +28,6 @@ cat >> /etc/salt/minion <<EOF
 id: $PNDA_CLUSTER-opentsdb-$1
 EOF
 
-cat >> /etc/salt/minion.d/beacons.conf <<EOF
-  service_opentsdb:
-    interval: $PLATFORM_SALT_BEACON_TIMEOUT
-    disable_during_state_run: True
-EOF
 echo $PNDA_CLUSTER-opentsdb-$1 > /etc/hostname
 hostname $PNDA_CLUSTER-opentsdb-$1
 
