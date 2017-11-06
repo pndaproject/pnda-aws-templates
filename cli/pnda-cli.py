@@ -55,7 +55,7 @@ CONSOLE = logging.getLogger('console')
 CONSOLE.addHandler(logging.StreamHandler())
 CONSOLE.handlers[0].setFormatter(LOG_FORMATTER)
 
-NAME_REGEX = r"^[\.a-zA-Z0-9-]+$"
+NAME_REGEX = r"^[\.a-z0-9-]+$"
 VALIDATION_RULES = None
 NODE_CONFIG = None
 PNDA_ENV = None
