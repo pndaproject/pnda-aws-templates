@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
 - PNDA-2965: Rename `cloudera_*` role grains to `hadoop_*`
 - PNDA-3215: Remove EPEL repository
 - PNDA-3180: When expanding a cluster limit the operations to strictly required steps on specific nodes
+- PNDA-3475: putting quotes on pnda_env_example in order to not be converted as boolean fby PyYAML
 
 ### Fixed
 - PNDA-3200: socks_proxy script reuses existing ssh-agent instead of launching a new one if possible
