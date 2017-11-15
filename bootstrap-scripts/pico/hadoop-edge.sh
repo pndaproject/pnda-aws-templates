@@ -48,10 +48,6 @@ EOF
 
 cat >> /etc/salt/minion <<EOF
 id: $PNDA_CLUSTER-hadoop-edge
-beacons:
-  service_restart:
-    interval: $PLATFORM_SALT_BEACON_TIMEOUT
-    disable_during_state_run: True
 EOF
 
 

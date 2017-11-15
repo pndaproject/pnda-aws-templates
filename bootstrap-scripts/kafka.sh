@@ -39,7 +39,7 @@ auto $PNDA_INGEST_NETWORK
 iface $PNDA_INGEST_NETWORK inet dhcp
 EOF
 
-elif [ "x$DISTRO" == "xrhel" ]; then
+elif [ "x$DISTRO" == "xrhel" -o "x$DISTRO" == "xcentos" ]; then
 
 cat > /etc/sysconfig/network-scripts/ifcfg-$PNDA_INGEST_NETWORK <<EOF
 DEVICE="$PNDA_INGEST_NETWORK"
@@ -49,6 +49,7 @@ TYPE="Ethernet"
 USERCTL="yes"
 PEERDNS="yes"
 IPV6INIT="no"
+DEFROUTE="no"
 EOF
 
 fi
