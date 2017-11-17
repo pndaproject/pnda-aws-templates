@@ -11,6 +11,7 @@ ec2_access:
   # The user name to use when logging into the AWS ec2 instances
   # Ubuntu: ubuntu
   # Redhat: ec2-user
+  # CentOS: centos
   OS_USER: ubuntu
 
 cloud_formation_parameters:
@@ -59,10 +60,8 @@ platform_salt:
 
   # Local path to folder containing a clone of the platform salt repository
   # PLATFORM_SALT_LOCAL: /path/to/platform-salt
-
   # Beacon timeout to check system reboot 
   PLATFORM_SALT_BEACON_TIMEOUT: 30
-
 
 pnda_application_repo:
   # Type of storage to use for PNDA application packages

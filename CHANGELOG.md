@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - PNDA 2390: PNDA restarts any services that need restarting when rebooted
 - PNDA-3302: upgrade edge flavor on pico
 - PNDA-3218: Add iprejecter to enable offline env
+- PNDA-3484: Add CentOS support
 
 ### Changed
 - PNDA-3444: Disallow uppercase letters in the cluster names.
