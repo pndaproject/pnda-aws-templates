@@ -1,7 +1,7 @@
 # Change Log
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## [Unreleased]
 ### Added
 - PNDA-1960: Make Kafkat available on nodes as option for Kafka management at CLI
 - PNDA-2955: Add pnda_env.yaml setting for choosing hadoop distro to install
@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
 - PNDA-3180: When expanding a cluster limit the operations to strictly required steps on specific nodes
 
 ### Fixed
+- PNDA-3499: Cleanup CHANGELOG with missing release info.
 - PNDA-3200: socks_proxy script reuses existing ssh-agent instead of launching a new one if possible
 - PNDA-3199: Make socks proxy script executable
 - PNDA-3424: Add a retry to AWS API calls to work around SSL timeout errors
